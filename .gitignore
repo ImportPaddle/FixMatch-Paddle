@@ -110,5 +110,4 @@ venv.bak/
 .idea/
 result/
 .DS_Store
-*.txt
 *.npy
