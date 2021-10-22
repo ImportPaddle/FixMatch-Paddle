@@ -6,7 +6,7 @@ from PIL import Image
 from torchvision import datasets
 from torchvision import transforms
 
-from .randaugment import RandAugmentMC
+from dataset.randaugment import RandAugmentMC
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +17,9 @@ cifar100_std = (0.2675, 0.2565, 0.2761)
 normal_mean = (0.5, 0.5, 0.5)
 normal_std = (0.5, 0.5, 0.5)
 
+# 全局取消证书验证
+import ssl
+ssl._create_default_https_context = ssl._create_unverified_context
 
 def get_cifar10(args, root):
     transform_labeled = transforms.Compose([

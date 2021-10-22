@@ -156,7 +156,7 @@ def main():
         args.world_size = torch.distributed.get_world_size()
         args.n_gpu = 1
 
-    args.device = device
+    args.device = device if torch.cuda.is_available() else 'cpu'
 
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s -   %(message)s",
@@ -237,7 +237,6 @@ def main():
 
     if args.local_rank == 0:
         torch.distributed.barrier()
-
     model.to(args.device)
 
     no_decay = ['bias', 'bn']
