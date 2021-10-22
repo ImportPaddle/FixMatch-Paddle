@@ -17,6 +17,10 @@ from torch.utils.data.distributed import DistributedSampler
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
+import paddle
+import paddle.nn.functional
+import paddle.optimizer
+
 from dataset.cifar import DATASET_GETTERS
 from utils import AverageMeter, accuracy
 
@@ -26,7 +30,7 @@ best_acc = 0
 
 def save_checkpoint(state, is_best, checkpoint, filename='checkpoint.pth.tar'):
     filepath = os.path.join(checkpoint, filename)
-    torch.save(state, filepath)
+    paddle.save(state, filepath)
     if is_best:
         shutil.copyfile(filepath, os.path.join(checkpoint,
                                                'model_best.pth.tar'))
