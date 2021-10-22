@@ -6,7 +6,7 @@ import random
 import shutil
 import time
 from collections import OrderedDict
-
+import paddle
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -142,7 +142,7 @@ def main():
                                          width=args.model_width,
                                          num_classes=args.num_classes)
         logger.info("Total params: {:.2f}M".format(
-            sum(p.numel() for p in model.parameters())/1e6))
+            (sum(p.numel() for p in model.parameters())/1e6).numpy()[0]))
         return model
 
     if args.local_rank == -1:
@@ -264,7 +264,7 @@ def main():
         assert os.path.isfile(
             args.resume), "Error: no checkpoint directory found!"
         args.out = os.path.dirname(args.resume)
-        checkpoint = torch.load(args.resume)
+        checkpoint = paddle.load(args.resume)
         best_acc = checkpoint['best_acc']
         args.start_epoch = checkpoint['epoch']
         model.load_state_dict(checkpoint['state_dict'])

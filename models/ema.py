@@ -1,6 +1,6 @@
 from copy import deepcopy
 
-#import torch
+import torch
 import paddle
 
 class ModelEMA(object):
@@ -14,6 +14,7 @@ class ModelEMA(object):
         self.param_keys = [k for k, _ in self.ema.named_parameters()]
         self.buffer_keys = [k for k, _ in self.ema.named_buffers()]
         for p in self.ema.parameters():
+            print
             p.requires_grad_(False)
 
     def update(self, model):
