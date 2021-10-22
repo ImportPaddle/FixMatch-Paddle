@@ -1,7 +1,7 @@
 from copy import deepcopy
 
 import torch
-
+import paddle
 
 class ModelEMA(object):
     def __init__(self, args, model, decay):
@@ -18,7 +18,7 @@ class ModelEMA(object):
 
     def update(self, model):
         needs_module = hasattr(model, 'module') and not self.ema_has_module
-        with torch.no_grad():
+        with paddle.no_grad():
             msd = model.state_dict()
             esd = self.ema.state_dict()
             for k in self.param_keys:

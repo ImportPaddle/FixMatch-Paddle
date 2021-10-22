@@ -1,18 +1,22 @@
 import logging
 
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
+#import torch
+#import torch.nn as nn
+#import torch.nn.functional as F
+import paddle
+import paddle.nn as nn
+import paddle.nn.functional as f
 
 logger = logging.getLogger(__name__)
 
 
 def mish(x):
     """Mish: A Self Regularized Non-Monotonic Neural Activation Function (https://arxiv.org/abs/1908.08681)"""
-    return x * torch.tanh(F.softplus(x))
+    #return x * torch.tanh(F.softplus(x))
+    return x * nn.Tanh(f.softplus(x))
 
 
-class nn.BatchNorm2d(nn.BatchNorm2d):
+class BatchNorm2d(nn.BatchNorm2D):
     """How Does BN Increase Collapsed Neural Network Filters? (https://arxiv.org/abs/2001.11216)"""
 
     def __init__(self, num_features, alpha=0.1, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True):
@@ -23,7 +27,7 @@ class nn.BatchNorm2d(nn.BatchNorm2d):
         return super().forward(x) + self.alpha
 
 
-class ResNeXtBottleneck(nn.Module):
+class ResNeXtBottleneck(nn.Layer):
     """
     RexNeXt bottleneck type C (https://github.com/facebookresearch/ResNeXt/blob/master/models/resnext.lua)
     """
@@ -42,28 +46,28 @@ class ResNeXtBottleneck(nn.Module):
         super().__init__()
         width_ratio = out_channels / (widen_factor * 64.)
         D = cardinality * int(base_width * width_ratio)
-        self.conv_reduce = nn.Conv2d(
-            in_channels, D, kernel_size=1, stride=1, padding=0, bias=False)
-        self.bn_reduce = nn.BatchNorm2d(D, momentum=0.001)
-        self.conv_conv = nn.Conv2d(D, D,
+        self.conv_reduce = nn.Conv2D(
+            in_channels, D, kernel_size=1, stride=1, padding=0, bias_attr=False)
+        self.bn_reduce = nn.BatchNorm2D(D, momentum=0.001)
+        self.conv_conv = nn.Conv2D(D, D,
                                    kernel_size=3, stride=stride, padding=1,
-                                   groups=cardinality, bias=False)
-        self.bn = nn.BatchNorm2d(D, momentum=0.001)
+                                   groups=cardinality, bias_attr=False)
+        self.bn = nn.BatchNorm2D(D, momentum=0.001)
         self.act = mish
-        self.conv_expand = nn.Conv2d(
-            D, out_channels, kernel_size=1, stride=1, padding=0, bias=False)
-        self.bn_expand = nn.BatchNorm2d(out_channels, momentum=0.001)
+        self.conv_expand = nn.Conv2D(
+            D, out_channels, kernel_size=1, stride=1, padding=0, bias_attr=False)
+        self.bn_expand = nn.BatchNorm2D(out_channels, momentum=0.001)
 
         self.shortcut = nn.Sequential()
         if in_channels != out_channels:
             self.shortcut.add_module('shortcut_conv',
-                                     nn.Conv2d(in_channels, out_channels,
+                                     nn.Conv2D(in_channels, out_channels,
                                                kernel_size=1,
                                                stride=stride,
                                                padding=0,
-                                               bias=False))
+                                               bias_attr=False))
             self.shortcut.add_module(
-                'shortcut_bn', nn.BatchNorm2d(out_channels, momentum=0.001))
+                'shortcut_bn', nn.BatchNorm2D(out_channels, momentum=0.001))
 
     def forward(self, x):
         bottleneck = self.conv_reduce.forward(x)
@@ -76,7 +80,7 @@ class ResNeXtBottleneck(nn.Module):
         return self.act(residual + bottleneck)
 
 
-class CifarResNeXt(nn.Module):
+class CifarResNeXt(nn.Layer):
     """
     ResNext optimized for the Cifar dataset, as specified in
     https://arxiv.org/pdf/1611.05431.pdf
@@ -103,8 +107,8 @@ class CifarResNeXt(nn.Module):
         self.stages = [64, 64 * self.widen_factor, 128 *
                        self.widen_factor, 256 * self.widen_factor]
 
-        self.conv_1_3x3 = nn.Conv2d(3, 64, 3, 1, 1, bias=False)
-        self.bn_1 = nn.BatchNorm2d(64, momentum=0.001)
+        self.conv_1_3x3 = nn.Conv2D(3, 64, 3, 1, 1, bias_attr=False)
+        self.bn_1 = nn.BatchNorm2D(64, momentum=0.001)
         self.act = mish
         self.stage_1 = self.block('stage_1', self.stages[0], self.stages[1], 1)
         self.stage_2 = self.block('stage_2', self.stages[1], self.stages[2], 2)
@@ -112,16 +116,16 @@ class CifarResNeXt(nn.Module):
         self.classifier = nn.Linear(self.stages[3], num_classes)
 
         for m in self.modules():
-            if isinstance(m, nn.Conv2d):
-                nn.init.kaiming_normal_(m.weight,
+            if isinstance(m, nn.Conv2D):
+                nn.InstanceNorm2D.kaiming_normal_(m.weight,
                                         mode='fan_out',
                                         nonlinearity='leaky_relu')
-            elif isinstance(m, nn.BatchNorm2d):
-                nn.init.constant_(m.weight, 1.0)
-                nn.init.constant_(m.bias, 0.0)
+            elif isinstance(m, nn.BatchNorm2D):
+                nn.InstanceNorm2D.constant_(m.weight, 1.0)
+                nn.InstanceNorm2D.constant_(m.bias, 0.0)
             elif isinstance(m, nn.Linear):
-                nn.init.xavier_normal_(m.weight)
-                nn.init.constant_(m.bias, 0.0)
+                nn.InstanceNorm2D.xavier_normal_(m.weight)
+                nn.InstanceNorm2D.constant_(m.bias, 0.0)
 
     def block(self, name, in_channels, out_channels, pool_stride=2):
         """ Stack n bottleneck modules where n is inferred from the depth of the network.
@@ -158,7 +162,7 @@ class CifarResNeXt(nn.Module):
         x = self.stage_1.forward(x)
         x = self.stage_2.forward(x)
         x = self.stage_3.forward(x)
-        x = F.adaptive_avg_pool2d(x, 1)
+        x = f.adaptive_avg_pool2d(x, 1)
         x = x.view(-1, self.stages[3])
         return self.classifier(x)
 
