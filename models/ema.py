@@ -1,6 +1,6 @@
 from copy import deepcopy
 
-import torch
+#import torch
 import paddle
 
 class ModelEMA(object):

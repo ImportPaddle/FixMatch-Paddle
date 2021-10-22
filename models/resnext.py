@@ -1,4 +1,5 @@
 import logging
+from models.initializers import xavier_normal_, kaiming_normal_, constant_
 
 #import torch
 #import torch.nn as nn
@@ -115,17 +116,15 @@ class CifarResNeXt(nn.Layer):
         self.stage_3 = self.block('stage_3', self.stages[2], self.stages[3], 2)
         self.classifier = nn.Linear(self.stages[3], num_classes)
 
-        for m in self.modules():
+        for m in self.sublayers():
             if isinstance(m, nn.Conv2D):
-                nn.InstanceNorm2D.kaiming_normal_(m.weight,
-                                        mode='fan_out',
-                                        nonlinearity='leaky_relu')
+                kaiming_normal_(m.weight, mode='fan_out', nonlinearity='leaky_relu')
             elif isinstance(m, nn.BatchNorm2D):
-                nn.InstanceNorm2D.constant_(m.weight, 1.0)
-                nn.InstanceNorm2D.constant_(m.bias, 0.0)
+                constant_(m.weight, 1.0)
+                constant_(m.bias, 0.0)
             elif isinstance(m, nn.Linear):
-                nn.InstanceNorm2D.xavier_normal_(m.weight)
-                nn.InstanceNorm2D.constant_(m.bias, 0.0)
+                xavier_normal_(m.weight)
+                constant_(m.bias, 0.0)
 
     def block(self, name, in_channels, out_channels, pool_stride=2):
         """ Stack n bottleneck modules where n is inferred from the depth of the network.
