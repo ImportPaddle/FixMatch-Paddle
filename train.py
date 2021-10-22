@@ -141,6 +141,7 @@ def main():
                                          depth=args.model_depth,
                                          width=args.model_width,
                                          num_classes=args.num_classes)
+        print('model.parameters:',(sum(p.numel() for p in model.parameters())/1e6))
         logger.info("Total params: {:.2f}M".format(
             (sum(p.numel() for p in model.parameters())/1e6).numpy()[0]))
         return model
