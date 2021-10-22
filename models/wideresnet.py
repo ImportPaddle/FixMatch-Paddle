@@ -114,7 +114,7 @@ class WideResNet(nn.Layer):
         out = self.block3(out)
         out = self.relu(self.bn1(out))
         out = f.adaptive_avg_pool2d(out, 1)
-        out = out.view(-1, self.channels)
+        out = out.reshape([-1, self.channels])
         return self.fc(out)
 
 

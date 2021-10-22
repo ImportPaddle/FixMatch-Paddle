@@ -1,9 +1,8 @@
 import logging
-
+from models.initializers import xavier_normal_, kaiming_normal_, constant_
 # import torch
 # import torch.nn as nn
 # import torch.nn.functional as F
-
 import paddle
 import paddle.nn as nn
 import paddle.nn.functional as f
@@ -100,13 +99,13 @@ class WideResNet(nn.Layer):
 
         for m in self.sublayers():
             if isinstance(m, nn.Conv2D):
-                nn.initializer.KaimingNormal(m.weight)
+                kaiming_normal_(m.weight, mode='fan_out', nonlinearity='leaky_relu')
             elif isinstance(m, nn.BatchNorm2D):
-                nn.InstanceNorm2D.constant_(m.weight, 1.0)
-                nn.InstanceNorm2D.constant_(m.bias, 0.0)
+                constant_(m.weight, 1.0)
+                constant_(m.bias, 0.0)
             elif isinstance(m, nn.Linear):
-                nn.InstanceNorm2D.xavier_normal_(m.weight)
-                nn.InstanceNorm2D.constant_(m.bias, 0.0)
+                xavier_normal_(m.weight)
+                constant_(m.bias, 0.0)
 
     def forward(self, x):
         out = self.conv1(x)
@@ -115,7 +114,7 @@ class WideResNet(nn.Layer):
         out = self.block3(out)
         out = self.relu(self.bn1(out))
         out = f.adaptive_avg_pool2d(out, 1)
-        out = out.view(-1, self.channels)
+        out = out.reshape([-1, self.channels])
         return self.fc(out)
 
 

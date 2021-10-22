@@ -162,7 +162,7 @@ class CifarResNeXt(nn.Layer):
         x = self.stage_2.forward(x)
         x = self.stage_3.forward(x)
         x = f.adaptive_avg_pool2d(x, 1)
-        x = x.view(-1, self.stages[3])
+        x = x.reshape([-1, self.stages[3]])
         return self.classifier(x)
 
 
