@@ -18,15 +18,16 @@ def model_set():
 
 def data_set(seed):
     batch_size=64
+    channel=3
     input_w=32
     input_H=32
     np.random.seed(seed)
-    data=np.random.randn(batch_size,input_w,input_H).astype(np.float32)
+    data=np.random.randn(batch_size,channel,input_w,input_H).astype(np.float32)
     data_paddle,data_torch=paddle.to_tensor(data),torch.from_numpy(data)
     return data_paddle,data_torch
 
 def gen_params(model_1):
-    model_1_params=model_1.static_dict()
+    model_1_params=model_1.state_dict()
     model_2_params = {}
     for key in model_1_params:
         weight = model_1_params[key].cpu().detach().numpy()
@@ -41,9 +42,10 @@ def gen_npy(seed_list):
         model_paddle,model_torch=model_set()
         params_paddle,params_torch=gen_params(model_torch)
         model_paddle.set_state_dict(params_paddle)
+        model_torch.load_state_dict(params_torch)
         res_paddle,res_torch=model_paddle(data_paddle),model_torch(data_torch)
-        reprod_log_paddle.add(f"data_{seed_list.index(seed)+1}",res_paddle)
-        reprod_log_torch.add(f"data_{seed_list.index(seed)+1}",res_torch)
+        reprod_log_paddle.add(f"data_{seed_list.index(seed)+1}",res_paddle.numpy())
+        reprod_log_torch.add(f"data_{seed_list.index(seed)+1}",res_torch.data.cpu().numpy())
     reprod_log_paddle.save("./resnext_paddle.npy")
     reprod_log_torch.save("./resnext_torch.npy")
 

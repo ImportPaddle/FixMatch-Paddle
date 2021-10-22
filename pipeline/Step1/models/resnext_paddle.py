@@ -1,4 +1,5 @@
 import logging
+from models.initializers import xavier_normal_, kaiming_normal_, constant_
 
 #import torch
 #import torch.nn as nn
@@ -16,7 +17,7 @@ def mish(x):
     return x * nn.Tanh()(f.softplus(x))
 
 
-class BatchNorm2D(nn.BatchNorm2D):
+class BatchNorm2d(nn.BatchNorm2D):
     """How Does BN Increase Collapsed Neural Network Filters? (https://arxiv.org/abs/2001.11216)"""
 
     def __init__(self, num_features, alpha=0.1, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True):
@@ -60,13 +61,13 @@ class ResNeXtBottleneck(nn.Layer):
 
         self.shortcut = nn.Sequential()
         if in_channels != out_channels:
-            self.shortcut.add_module('shortcut_conv',
+            self.shortcut.add_sublayer('shortcut_conv',
                                      nn.Conv2D(in_channels, out_channels,
                                                kernel_size=1,
                                                stride=stride,
                                                padding=0,
                                                bias_attr=False))
-            self.shortcut.add_module(
+            self.shortcut.add_sublayer(
                 'shortcut_bn', nn.BatchNorm2D(out_channels, momentum=0.001))
 
     def forward(self, x):
@@ -115,17 +116,15 @@ class CifarResNeXt(nn.Layer):
         self.stage_3 = self.block('stage_3', self.stages[2], self.stages[3], 2)
         self.classifier = nn.Linear(self.stages[3], num_classes)
 
-        for m in self.modules():
+        for m in self.sublayers():
             if isinstance(m, nn.Conv2D):
-                nn.InstanceNorm2D.kaiming_normal_(m.weight,
-                                        mode='fan_out',
-                                        nonlinearity='leaky_relu')
+                kaiming_normal_(m.weight, mode='fan_out', nonlinearity='leaky_relu')
             elif isinstance(m, nn.BatchNorm2D):
-                nn.InstanceNorm2D.constant_(m.weight, 1.0)
-                nn.InstanceNorm2D.constant_(m.bias, 0.0)
+                constant_(m.weight, 1.0)
+                constant_(m.bias, 0.0)
             elif isinstance(m, nn.Linear):
-                nn.InstanceNorm2D.xavier_normal_(m.weight)
-                nn.InstanceNorm2D.constant_(m.bias, 0.0)
+                xavier_normal_(m.weight)
+                constant_(m.bias, 0.0)
 
     def block(self, name, in_channels, out_channels, pool_stride=2):
         """ Stack n bottleneck modules where n is inferred from the depth of the network.
@@ -140,14 +139,14 @@ class CifarResNeXt(nn.Layer):
         for bottleneck in range(self.block_depth):
             name_ = '%s_bottleneck_%d' % (name, bottleneck)
             if bottleneck == 0:
-                block.add_module(name_, ResNeXtBottleneck(in_channels,
+                block.add_sublayer(name_, ResNeXtBottleneck(in_channels,
                                                           out_channels,
                                                           pool_stride,
                                                           self.cardinality,
                                                           self.base_width,
                                                           self.widen_factor))
             else:
-                block.add_module(name_,
+                block.add_sublayer(name_,
                                  ResNeXtBottleneck(out_channels,
                                                    out_channels,
                                                    1,
@@ -163,7 +162,7 @@ class CifarResNeXt(nn.Layer):
         x = self.stage_2.forward(x)
         x = self.stage_3.forward(x)
         x = f.adaptive_avg_pool2d(x, 1)
-        x = x.view(-1, self.stages[3])
+        x = x.reshape([-1, self.stages[3]])
         return self.classifier(x)
 
 

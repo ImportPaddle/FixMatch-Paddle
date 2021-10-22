@@ -109,3 +109,6 @@ venv.bak/
 # we
 .idea/
 result/
+.DS_Store
+*.txt
+*.npy

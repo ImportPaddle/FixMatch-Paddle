@@ -61,13 +61,13 @@ class ResNeXtBottleneck(nn.Layer):
 
         self.shortcut = nn.Sequential()
         if in_channels != out_channels:
-            self.shortcut.add_module('shortcut_conv',
+            self.shortcut.add_sublayer('shortcut_conv',
                                      nn.Conv2D(in_channels, out_channels,
                                                kernel_size=1,
                                                stride=stride,
                                                padding=0,
                                                bias_attr=False))
-            self.shortcut.add_module(
+            self.shortcut.add_sublayer(
                 'shortcut_bn', nn.BatchNorm2D(out_channels, momentum=0.001))
 
     def forward(self, x):
@@ -139,14 +139,14 @@ class CifarResNeXt(nn.Layer):
         for bottleneck in range(self.block_depth):
             name_ = '%s_bottleneck_%d' % (name, bottleneck)
             if bottleneck == 0:
-                block.add_module(name_, ResNeXtBottleneck(in_channels,
+                block.add_sublayer(name_, ResNeXtBottleneck(in_channels,
                                                           out_channels,
                                                           pool_stride,
                                                           self.cardinality,
                                                           self.base_width,
                                                           self.widen_factor))
             else:
-                block.add_module(name_,
+                block.add_sublayer(name_,
                                  ResNeXtBottleneck(out_channels,
                                                    out_channels,
                                                    1,

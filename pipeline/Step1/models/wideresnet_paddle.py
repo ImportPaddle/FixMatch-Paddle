@@ -98,7 +98,7 @@ class WideResNet(nn.Layer):
         self.fc = nn.Linear(channels[3], num_classes)
         self.channels = channels[3]
 
-        for m in self.modules():
+        for m in self.sublayers():
             if isinstance(m, nn.Conv2D):
                 nn.initializer.KaimingNormal(m.weight)
             elif isinstance(m, nn.BatchNorm2D):
