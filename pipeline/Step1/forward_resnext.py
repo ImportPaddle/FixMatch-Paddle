@@ -1,6 +1,6 @@
 import numpy as np
 
-from pipeline.Step1.models import resnext_paddle,resnext_torch
+from models import resnext_paddle,resnext_torch
 from reprod_log import ReprodDiffHelper,ReprodLogger
 import torch
 import paddle

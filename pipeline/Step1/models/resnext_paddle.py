@@ -1,5 +1,5 @@
 import logging
-from models.initializers import xavier_normal_, kaiming_normal_, constant_
+from initializers import xavier_normal_, kaiming_normal_, constant_
 
 #import torch
 #import torch.nn as nn
