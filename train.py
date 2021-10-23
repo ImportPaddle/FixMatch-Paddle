@@ -243,18 +243,21 @@ def main():
     model.to(args.device)
 
     no_decay = ['bias', 'bn']
-    grouped_parameters = [
-        {'params': [p for n, p in model.named_parameters() if not any(
-            nd in n for nd in no_decay)], 'weight_decay': args.wdecay},
-        {'params': [p for n, p in model.named_parameters() if any(
-            nd in n for nd in no_decay)], 'weight_decay': 0.0}
-    ]
-    optimizer = optim.Momentum(parameters=grouped_parameters, learning_rate=args.lr,
-                          momentum=0.9, use_nesterov=args.nesterov)
+
+    model_params_1 = [p for n, p in model.named_parameters() if not any(
+        nd in n for nd in no_decay)]
+    optimizer_1 = optim.Momentum(learning_rate=args.lr, momentum=0.9, weight_decay=args.wdecay,
+                                 parameters=model_params_1, use_nesterov=args.nesterov)
+    model_params_2 = [p for n, p in model.named_parameters() if any(
+        nd in n for nd in no_decay)]
+    optimizer_2 = optim.Momentum(learning_rate=args.lr, momentum=0.9, weight_decay=0.0,
+                                 parameters=model_params_2, use_nesterov=args.nesterov)
 
     args.epochs = math.ceil(args.total_steps / args.eval_step)
-    scheduler = get_cosine_schedule_with_warmup(
-        optimizer, args.warmup, args.total_steps)
+    scheduler_1 = get_cosine_schedule_with_warmup(
+        optimizer_1, args.warmup, args.total_steps)
+    scheduler_2 = get_cosine_schedule_with_warmup(
+        optimizer_2, args.warmup, args.total_steps)
 
     if args.use_ema:
         from models.ema import ModelEMA
@@ -273,13 +276,17 @@ def main():
         model.load_state_dict(checkpoint['state_dict'])
         if args.use_ema:
             ema_model.ema.load_state_dict(checkpoint['ema_state_dict'])
-        optimizer.load_state_dict(checkpoint['optimizer'])
-        scheduler.load_state_dict(checkpoint['scheduler'])
+        optimizer_1.load_state_dict(checkpoint['optimizer'])
+        scheduler_1.load_state_dict(checkpoint['scheduler'])
+        optimizer_2.load_state_dict(checkpoint['optimizer'])
+        scheduler_2.load_state_dict(checkpoint['scheduler'])
 
     if args.amp:
         from apex import amp
         model, optimizer = amp.initialize(
-            model, optimizer, opt_level=args.opt_level)
+            model, optimizer_1, opt_level=args.opt_level)
+        model, optimizer = amp.initialize(
+            model, optimizer_2, opt_level=args.opt_level)
 
     if args.local_rank != -1:
         model = torch.nn.parallel.DistributedDataParallel(
@@ -296,11 +303,11 @@ def main():
 
     model.zero_grad()
     train(args, labeled_trainloader, unlabeled_trainloader, test_loader,
-          model, optimizer, ema_model, scheduler)
+          model, optimizer_1,optimizer_2, ema_model, scheduler_1,scheduler_2)
 
 
 def train(args, labeled_trainloader, unlabeled_trainloader, test_loader,
-          model, optimizer, ema_model, scheduler):
+          model, optimizer_1,optimizer_2, ema_model, scheduler_1,scheduler_2):
     if args.amp:
         from apex import amp
     global best_acc
@@ -369,7 +376,9 @@ def train(args, labeled_trainloader, unlabeled_trainloader, test_loader,
             loss = Lx + args.lambda_u * Lu
 
             if args.amp:
-                with amp.scale_loss(loss, optimizer) as scaled_loss:
+                with amp.scale_loss(loss, optimizer_1) as scaled_loss:
+                    scaled_loss.backward()
+                with amp.scale_loss(loss, optimizer_2) as scaled_loss:
                     scaled_loss.backward()
             else:
                 loss.backward()
@@ -377,8 +386,10 @@ def train(args, labeled_trainloader, unlabeled_trainloader, test_loader,
             losses.update(loss.item())
             losses_x.update(Lx.item())
             losses_u.update(Lu.item())
-            optimizer.step()
-            scheduler.step()
+            optimizer_1.step()
+            scheduler_1.step()
+            optimizer_2.step()
+            scheduler_2.step()
             if args.use_ema:
                 ema_model.update(model)
             model.zero_grad()
@@ -392,7 +403,7 @@ def train(args, labeled_trainloader, unlabeled_trainloader, test_loader,
                     epochs=args.epochs,
                     batch=batch_idx + 1,
                     iter=args.eval_step,
-                    lr=scheduler.get_last_lr()[0],
+                    lr=scheduler_1.get_last_lr()[0],
                     data=data_time.avg,
                     bt=batch_time.avg,
                     loss=losses.avg,
@@ -432,8 +443,8 @@ def train(args, labeled_trainloader, unlabeled_trainloader, test_loader,
                 'ema_state_dict': ema_to_save.state_dict() if args.use_ema else None,
                 'acc': test_acc,
                 'best_acc': best_acc,
-                'optimizer': optimizer.state_dict(),
-                'scheduler': scheduler.state_dict(),
+                'optimizer': optimizer_1.state_dict(),
+                'scheduler': scheduler_2.state_dict(),
             }, is_best, args.out)
 
             test_accs.append(test_acc)
