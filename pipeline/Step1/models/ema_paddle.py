@@ -1,6 +1,5 @@
 from copy import deepcopy
 
-import torch
 import paddle
 
 class ModelEMA(object):
@@ -14,7 +13,7 @@ class ModelEMA(object):
         self.param_keys = [k for k, _ in self.ema.named_parameters()]
         self.buffer_keys = [k for k, _ in self.ema.named_buffers()]
         for p in self.ema.parameters():
-            p.requires_grad_(False)
+            p.stop_gradient(True)
 
     def update(self, model):
         needs_module = hasattr(model, 'module') and not self.ema_has_module
