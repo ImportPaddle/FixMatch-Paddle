@@ -39,8 +39,6 @@ def accuracy(output, target, topk=(1,)):
 
     res = []
     for k in topk:
-        # print("correct_k:",correct.astype(paddle.int64)[:k].sum(1))
-        # correct_k = correct[:k].reshape([-1]).astype(paddle.float32).sum(0)
         correct_k=correct.astype(paddle.float32)[:k].sum(1).sum()
         res.append(correct_k.multiply(paddle.to_tensor(100.0 / batch_size)))
     return res

@@ -78,11 +78,18 @@ def gen_npy(seed_list, model_name='resnext'):
         res_paddle, res_torch = model_paddle(data_paddle), model_torch(data_torch)
         reprod_log_paddle.add(f"data_{seed_list.index(seed) + 1}", res_paddle.numpy())
         reprod_log_torch.add(f"data_{seed_list.index(seed) + 1}", res_torch.data.cpu().numpy())
-    return reprod_log_paddle, reprod_log_torch
+    reprod_log_paddle.save(f"./{model_name}_paddle.npy")
+    reprod_log_torch.save(f"./{model_name}_torch.npy")
 
 
-def gen_check(info_paddle, info_torch, save_name):
+def gen_check(name):
     diff_helper = ReprodDiffHelper()
+    info_torch = diff_helper.load_info(f"./{name}_torch.npy")
+    info_paddle = diff_helper.load_info(f"./{name}_paddle.npy")
+
     diff_helper.compare_info(info_paddle, info_torch)
+
     diff_helper.report(
-        diff_method="mean", diff_threshold=1e-6, path=f"./diff_{save_name}.txt")
+        diff_method="mean", diff_threshold=1e-6, path=f"./diff_{name}_model.txt")
+
+

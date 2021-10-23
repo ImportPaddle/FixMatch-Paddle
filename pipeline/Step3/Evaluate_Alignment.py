@@ -6,8 +6,11 @@ from pipeline.Step3.Evaluate_paddle import AverageMeter as AverageMeter_torch
 import paddle
 import torch
 
+
+
 if __name__ == '__main__':
     model_name = 'resnext'
+    save_name='Evaluate_Alignment'
     seed_list = [100, 300, 1000]
     model_paddle, model_torch = gen_model(model_name=model_name)
     model_paddle, model_torch = update_model(model_paddle, model_torch)
@@ -32,4 +35,7 @@ if __name__ == '__main__':
         reprod_log_paddle.add(f"data_{seed_list.index(seed) + 1}_top5", np.array(top5_paddle.avg))
         reprod_log_torch.add(f"data_{seed_list.index(seed) + 1}_top1", np.array(top1_torch.avg))
         reprod_log_torch.add(f"data_{seed_list.index(seed) + 1}_top5", np.array(top5_torch.avg))
-    gen_check(reprod_log_paddle, reprod_log_torch, "Evaluate_Alignment")
+    reprod_log_paddle.save(f"./{save_name}_paddle.npy")
+    reprod_log_torch.save(f"./{save_name}_torch.npy")
+    gen_check(save_name)
+
