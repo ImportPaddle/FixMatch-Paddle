@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 def mish(x):
     """Mish: A Self Regularized Non-Monotonic Neural Activation Function (https://arxiv.org/abs/1908.08681)"""
-    return x * nn.Tanh(f.softplus(x))
+    return x * nn.Tanh()(f.softplus(x))
 
 
 class PSBatchNorm2d(nn.BatchNorm2D):

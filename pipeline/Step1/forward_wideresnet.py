@@ -55,7 +55,8 @@ def gen_npy(seed_list):
         res_paddle, res_torch = model_paddle(data_paddle), model_torch(data_torch)
         reprod_log_paddle.add(f"data_{seed_list.index(seed) + 1}", res_paddle.numpy())
         reprod_log_torch.add(f"data_{seed_list.index(seed) + 1}", res_torch.data.cpu().numpy())
-    return reprod_log_paddle, reprod_log_torch
+    reprod_log_paddle.save(f"./{model_name}_paddle.npy")
+    reprod_log_torch.save(f"./{model_name}_torch.npy")
 
 
 def gen_check():
