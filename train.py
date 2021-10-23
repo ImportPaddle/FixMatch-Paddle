@@ -191,26 +191,31 @@ def main():
     labeled_dataset, unlabeled_dataset, test_dataset = DATASET_GETTERS[args.dataset](
         args, './data/cifar-10-python.tar.gz')
 
-    train_sampler = RandomSampler
-
+    labeled_sampler = RandomSampler(labeled_dataset)
+    labeled_batch_sampler = BatchSampler(sampler=labeled_sampler,
+                                         batch_size=args.batch_size,
+                                         drop_last=True)
     labeled_trainloader = DataLoader(
         labeled_dataset,
-        sampler=train_sampler(labeled_dataset),
-        batch_size=args.batch_size,
-        num_workers=args.num_workers,
-        drop_last=True)
+        batch_sampler=labeled_batch_sampler,
+        num_workers=args.num_workers)
 
+    unlabeled_sampler = RandomSampler(unlabeled_dataset)
+    labeled_batch_sampler = BatchSampler(sampler=unlabeled_sampler,
+                                         batch_size=args.batch_size*args.mu,
+                                         drop_last=True)
     unlabeled_trainloader = DataLoader(
         unlabeled_dataset,
-        sampler=train_sampler(unlabeled_dataset),
-        batch_size=args.batch_size*args.mu,
-        num_workers=args.num_workers,
-        drop_last=True)
+        batch_sampler=labeled_batch_sampler,
+        num_workers=args.num_workers)
 
+    test_sampler = RandomSampler(test_dataset)
+    labeled_batch_sampler = BatchSampler(sampler=test_sampler,
+                                         batch_size=args.batch_size*args.mu,
+                                         drop_last=True)
     test_loader = DataLoader(
         test_dataset,
-        sampler=SequentialSampler(test_dataset),
-        batch_size=args.batch_size,
+        batch_sampler=labeled_batch_sampler,
         num_workers=args.num_workers)
     model = create_model(args)
 
