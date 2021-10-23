@@ -32,18 +32,17 @@ def accuracy(output, target, topk=(1,)):
     """Computes the precision@k for the specified values of k"""
     maxk = max(topk)
     batch_size = target.shape[0]
-    print('output:',output)
     _, pred = output.topk(maxk, 1, True, True)
     pred = pred.t()
-    print("pred_shape:",pred.shape)
-    print("target_shape:",target.shape)
-    print("target_shape:",target.reshape([1, -1]).shape)
-    correct = pred.equal(target.reshape([1, -1]).expand_as(pred))
+    target=paddle.expand_as(target.reshape([1, -1]),pred)
+    correct = pred.equal(target)
 
     res = []
     for k in topk:
-        correct_k = correct[:k].reshape(-1).float().sum(0)
-        res.append(correct_k.mul_(100.0 / batch_size))
+        # print("correct_k:",correct.astype(paddle.int64)[:k].sum(1))
+        # correct_k = correct[:k].reshape([-1]).astype(paddle.float32).sum(0)
+        correct_k=correct.astype(paddle.float32)[:k].sum(1).sum()
+        res.append(correct_k.multiply(paddle.to_tensor(100.0 / batch_size)))
     return res
 
 

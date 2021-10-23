@@ -31,10 +31,9 @@ def gen_fake_data(seed=100, shape=None):
 
 def gen_fake_label(seed=100, shape=None,num_classes=10):
     if shape is None:
-        shape = [64, 1]
+        shape = 64
     np.random.seed(seed)
-    fake_label = np.random.randint(0,10,shape).astype(np.int64)
-    print()
+    fake_label = np.random.randint(0,10,shape)
     label_paddle, label_torch = paddle.to_tensor(fake_label), torch.from_numpy(fake_label)
     return label_paddle, label_torch
 
