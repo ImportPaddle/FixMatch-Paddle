@@ -82,6 +82,7 @@ def gen_npy(seed_list, model_name='resnext'):
     reprod_log_torch.save(f"./{model_name}_torch.npy")
 
 
+
 def gen_check(name):
     diff_helper = ReprodDiffHelper()
     info_torch = diff_helper.load_info(f"./{name}_torch.npy")
