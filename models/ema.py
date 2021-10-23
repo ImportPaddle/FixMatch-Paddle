@@ -13,7 +13,7 @@ class ModelEMA(object):
         self.param_keys = [k for k, _ in self.ema.named_parameters()]
         self.buffer_keys = [k for k, _ in self.ema.named_buffers()]
         for p in self.ema.parameters():
-            p.stop_gradient(True)
+            p.stop_gradient = True
 
     def update(self, model):
         needs_module = hasattr(model, 'module') and not self.ema_has_module
@@ -27,8 +27,8 @@ class ModelEMA(object):
                     j = k
                 model_v = msd[j].detach()
                 ema_v = esd[k]
-                esd[k].copy_(ema_v * self.decay + (1. - self.decay) * model_v)
-
+                esd[k].set_value(ema_v * self.decay + (1. - self.decay) * model_v)
+                # esd[k]=ema_v * self.decay + (1. - self.decay) * model_v
             for k in self.buffer_keys:
                 if needs_module:
                     j = 'module.' + k

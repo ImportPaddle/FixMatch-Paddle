@@ -6,7 +6,6 @@ import random
 import shutil
 import time
 from collections import OrderedDict
-import paddle
 import numpy as np
 
 import paddle
@@ -14,7 +13,7 @@ import paddle.nn.functional as F
 import paddle.optimizer as optim
 
 from paddle.optimizer.lr import LambdaDecay
-from paddle.io import DataLoader, RandomSampler, SequenceSampler
+from paddle.io import DataLoader, RandomSampler, SequenceSampler, BatchSampler
 
 from tqdm import tqdm
 
@@ -25,42 +24,46 @@ logger = logging.getLogger(__name__)
 best_acc = 0
 
 
-def save_checkpoint(state, is_best, checkpoint, filename='checkpoint.pth.tar'):
+def save_checkpoint(state, is_best, checkpoint, filename='checkpoint.pdparams'):
     filepath = os.path.join(checkpoint, filename)
     paddle.save(state, filepath)
     if is_best:
         shutil.copyfile(filepath, os.path.join(checkpoint,
-                                               'model_best.pth.tar'))
+                                               'model_best.pdparams'))
 
 
 def set_seed(args):
     random.seed(args.seed)
     np.random.seed(args.seed)
+    paddle.seed(args.seed)
 
 
-def get_cosine_schedule_with_warmup(optimizer,
-                                    num_warmup_steps,
+def get_cosine_schedule_with_warmup(learning_rate, num_warmup_steps,
                                     num_training_steps,
-                                    num_cycles=7./16.,
+                                    num_cycles=7. / 16.,
                                     last_epoch=-1):
     def _lr_lambda(current_step):
         if current_step < num_warmup_steps:
             return float(current_step) / float(max(1, num_warmup_steps))
         no_progress = float(current_step - num_warmup_steps) / \
-            float(max(1, num_training_steps - num_warmup_steps))
+                      float(max(1, num_training_steps - num_warmup_steps))
         return max(0., math.cos(math.pi * num_cycles * no_progress))
 
-    return LambdaDecay(optimizer, _lr_lambda, last_epoch)
+    return LambdaDecay(learning_rate=learning_rate,
+                       lr_lambda=_lr_lambda,
+                       last_epoch=last_epoch,
+                       # verbose=True,
+                       )
 
 
 def interleave(x, size):
     s = list(x.shape)
-    return x.reshape([-1, size] + s[1:]).transpose(0, 1).reshape([-1] + s[1:])
+    return x.reshape([-1, size] + s[1:]).transpose([1,0,2,3,4]).reshape([-1] + s[1:])
 
 
 def de_interleave(x, size):
     s = list(x.shape)
-    return x.reshape([size, -1] + s[1:]).transpose(0, 1).reshape([-1] + s[1:])
+    return x.reshape([size, -1] + s[1:]).transpose([1,0,2]).reshape([-1] + s[1:])
 
 
 def main():
@@ -79,7 +82,7 @@ def main():
     parser.add_argument('--arch', default='wideresnet', type=str,
                         choices=['wideresnet', 'resnext'],
                         help='dataset name')
-    parser.add_argument('--total-steps', default=2**20, type=int,
+    parser.add_argument('--total-steps', default=2 ** 20, type=int,
                         help='number of total steps to run')
     parser.add_argument('--eval-step', default=1024, type=int,
                         help='number of eval steps to run')
@@ -117,7 +120,7 @@ def main():
                         help="use 16-bit (mixed) precision through NVIDIA apex AMP")
     parser.add_argument("--opt_level", type=str, default="O1",
                         help="apex AMP optimization level selected in ['O0', 'O1', 'O2', and 'O3']."
-                        "See details at https://nvidia.github.io/apex/amp.html")
+                             "See details at https://nvidia.github.io/apex/amp.html")
     parser.add_argument("--local_rank", type=int, default=-1,
                         help="For distributed training: local_rank")
     parser.add_argument('--no-progress', action='store_true',
@@ -125,6 +128,9 @@ def main():
 
     args = parser.parse_args()
     global best_acc
+
+    paddle.set_device('gpu') if paddle.is_compiled_with_cuda() else paddle.set_device('cpu')
+    args.n_gpu = len(paddle.static.cuda_places()) if paddle.is_compiled_with_cuda() else 0
 
     def create_model(args):
         if args.arch == 'wideresnet':
@@ -140,12 +146,11 @@ def main():
                                          width=args.model_width,
                                          num_classes=args.num_classes)
         logger.info("Total params: {:.2f}M".format(
-            (sum(p.numel() for p in model.parameters())/1e6).numpy()[0]))
+            (sum(p.numel() for p in model.parameters()) / 1e6).numpy()[0]))
         return model
 
     args.device = paddle.get_device()
     args.world_size = 1
-    args.n_gpu = len(paddle.static.cuda_places())
 
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s -   %(message)s",
@@ -157,16 +162,16 @@ def main():
         f"device: {args.device}, "
         f"n_gpu: {args.n_gpu}, "
         f"distributed training: {bool(args.local_rank != -1)}, "
-        f"16-bits training: {args.amp}",)
+        f"16-bits training: {args.amp}", )
 
     logger.info(dict(args._get_kwargs()))
 
     if args.seed is not None:
         set_seed(args)
-
-    if args.local_rank in [-1, 0]:
-        os.makedirs(args.out, exist_ok=True)
-        args.writer = SummaryWriter(args.out)
+    #
+    # if args.local_rank in [-1, 0]:
+    #     os.makedirs(args.out, exist_ok=True)
+    #     args.writer = SummaryWriter(args.out)
 
     if args.dataset == 'cifar10':
         args.num_classes = 10
@@ -202,7 +207,7 @@ def main():
 
     unlabeled_sampler = RandomSampler(unlabeled_dataset)
     labeled_batch_sampler = BatchSampler(sampler=unlabeled_sampler,
-                                         batch_size=args.batch_size*args.mu,
+                                         batch_size=args.batch_size * args.mu,
                                          drop_last=True)
     unlabeled_trainloader = DataLoader(
         unlabeled_dataset,
@@ -211,27 +216,31 @@ def main():
 
     test_sampler = RandomSampler(test_dataset)
     labeled_batch_sampler = BatchSampler(sampler=test_sampler,
-                                         batch_size=args.batch_size*args.mu,
+                                         batch_size=args.batch_size * args.mu,
                                          drop_last=True)
     test_loader = DataLoader(
         test_dataset,
         batch_sampler=labeled_batch_sampler,
         num_workers=args.num_workers)
+
     model = create_model(args)
 
     no_decay = ['bias', 'bn']
-    grouped_parameters = [
-        {'params': [p for n, p in model.named_parameters() if not any(
-            nd in n for nd in no_decay)], 'weight_decay': args.wdecay},
-        {'params': [p for n, p in model.named_parameters() if any(
-            nd in n for nd in no_decay)], 'weight_decay': 0.0}
-    ]
-    optimizer = optim.SGD(grouped_parameters, lr=args.lr,
-                          momentum=0.9, nesterov=args.nesterov)
+
+    scheduler_1 = get_cosine_schedule_with_warmup(args.lr, args.warmup, args.total_steps)
+    scheduler_2 = get_cosine_schedule_with_warmup(args.lr, args.warmup, args.total_steps)
+
+    model_params_1 = [p for n, p in model.named_parameters() if not any(
+        nd in n for nd in no_decay)]
+    model_params_2 = [p for n, p in model.named_parameters() if any(
+        nd in n for nd in no_decay)]
+
+    optimizer_1 = optim.Momentum(learning_rate=scheduler_1, momentum=0.9, weight_decay=args.wdecay,
+                                 parameters=model_params_1, use_nesterov=args.nesterov)
+    optimizer_2 = optim.Momentum(learning_rate=scheduler_2, momentum=0.9, weight_decay=0.0,
+                                 parameters=model_params_2, use_nesterov=args.nesterov)
 
     args.epochs = math.ceil(args.total_steps / args.eval_step)
-    scheduler = get_cosine_schedule_with_warmup(
-        optimizer, args.warmup, args.total_steps)
 
     if args.use_ema:
         from models.ema import ModelEMA
@@ -250,29 +259,32 @@ def main():
         model.load_state_dict(checkpoint['state_dict'])
         if args.use_ema:
             ema_model.ema.load_state_dict(checkpoint['ema_state_dict'])
-        optimizer.load_state_dict(checkpoint['optimizer'])
-        scheduler.load_state_dict(checkpoint['scheduler'])
+        optimizer_1.load_state_dict(checkpoint['optimizer_1'])
+        optimizer_2.load_state_dict(checkpoint['optimizer_2'])
 
     if args.amp:
         from apex import amp
-        model, optimizer = amp.initialize(
-            model, optimizer, opt_level=args.opt_level)
+        model, optimizer_1 = amp.initialize(
+            model, optimizer_1, opt_level=args.opt_level)
+        model, optimizer_2 = amp.initialize(
+            model, optimizer_2, opt_level=args.opt_level)
 
     logger.info("***** Running training *****")
     logger.info(f"  Task = {args.dataset}@{args.num_labeled}")
     logger.info(f"  Num Epochs = {args.epochs}")
     logger.info(f"  Batch size per GPU = {args.batch_size}")
     logger.info(
-        f"  Total train batch size = {args.batch_size*args.world_size}")
+        f"  Total train batch size = {args.batch_size * args.world_size}")
     logger.info(f"  Total optimization steps = {args.total_steps}")
 
-    model.zero_grad()
+    optimizer_1.clear_grad()
+    optimizer_2.clear_grad()
     train(args, labeled_trainloader, unlabeled_trainloader, test_loader,
-          model, optimizer, ema_model, scheduler)
+          model, optimizer_1, optimizer_2, ema_model, scheduler_1, scheduler_2)
 
 
 def train(args, labeled_trainloader, unlabeled_trainloader, test_loader,
-          model, optimizer, ema_model, scheduler):
+          model, optimizer_1, optimizer_2, ema_model, scheduler_1, scheduler_2):
     if args.amp:
         from apex import amp
     global best_acc
@@ -321,19 +333,20 @@ def train(args, labeled_trainloader, unlabeled_trainloader, test_loader,
             data_time.update(time.time() - end)
             batch_size = inputs_x.shape[0]
             inputs = interleave(
-                paddle.concat((inputs_x, inputs_u_w, inputs_u_s)), 2*args.mu+1)
-            targets_x = targets_x
+                paddle.concat((inputs_x, inputs_u_w, inputs_u_s)), 2 * args.mu + 1)
+
             logits = model(inputs)
-            logits = de_interleave(logits, 2*args.mu+1)
+            logits = de_interleave(logits, 2 * args.mu + 1)
             logits_x = logits[:batch_size]
             logits_u_w, logits_u_s = logits[batch_size:].chunk(2)
             del logits
 
             Lx = F.cross_entropy(logits_x, targets_x, reduction='mean')
 
-            pseudo_label = F.softmax(logits_u_w.detach()/args.T, axis=-1)
-            max_probs, targets_u = paddle.max(pseudo_label, axis=-1)
-            mask = max_probs.ge(args.threshold).float()
+            pseudo_label = F.softmax(logits_u_w.detach() / args.T, axis=-1)
+
+            max_probs, targets_u = paddle.max(pseudo_label, axis=-1),paddle.argmax(pseudo_label, axis=-1)
+            mask = paddle.greater_equal(max_probs,paddle.to_tensor(args.threshold)).astype(paddle.float32)
 
             Lu = (F.cross_entropy(logits_u_s, targets_u,
                                   reduction='none') * mask).mean()
@@ -341,7 +354,9 @@ def train(args, labeled_trainloader, unlabeled_trainloader, test_loader,
             loss = Lx + args.lambda_u * Lu
 
             if args.amp:
-                with amp.scale_loss(loss, optimizer) as scaled_loss:
+                with amp.scale_loss(loss, optimizer_1) as scaled_loss:
+                    scaled_loss.backward()
+                with amp.scale_loss(loss, optimizer_2) as scaled_loss:
                     scaled_loss.backward()
             else:
                 loss.backward()
@@ -349,28 +364,32 @@ def train(args, labeled_trainloader, unlabeled_trainloader, test_loader,
             losses.update(loss.item())
             losses_x.update(Lx.item())
             losses_u.update(Lu.item())
-            optimizer.step()
-            scheduler.step()
+            optimizer_1.step()
+            scheduler_1.step()
+            optimizer_2.step()
+            scheduler_2.step()
             if args.use_ema:
                 ema_model.update(model)
-            model.zero_grad()
+            optimizer_1.clear_grad()
+            optimizer_2.clear_grad()
 
             batch_time.update(time.time() - end)
             end = time.time()
             mask_probs.update(mask.mean().item())
             if not args.no_progress:
-                p_bar.set_description("Train Epoch: {epoch}/{epochs:4}. Iter: {batch:4}/{iter:4}. LR: {lr:.4f}. Data: {data:.3f}s. Batch: {bt:.3f}s. Loss: {loss:.4f}. Loss_x: {loss_x:.4f}. Loss_u: {loss_u:.4f}. Mask: {mask:.2f}. ".format(
-                    epoch=epoch + 1,
-                    epochs=args.epochs,
-                    batch=batch_idx + 1,
-                    iter=args.eval_step,
-                    lr=scheduler.get_last_lr()[0],
-                    data=data_time.avg,
-                    bt=batch_time.avg,
-                    loss=losses.avg,
-                    loss_x=losses_x.avg,
-                    loss_u=losses_u.avg,
-                    mask=mask_probs.avg))
+                p_bar.set_description(
+                    "Train Epoch: {epoch}/{epochs:4}. Iter: {batch:4}/{iter:4}. LR: {lr:.4f}. Data: {data:.3f}s. Batch: {bt:.3f}s. Loss: {loss:.4f}. Loss_x: {loss_x:.4f}. Loss_u: {loss_u:.4f}. Mask: {mask:.2f}. ".format(
+                        epoch=epoch + 1,
+                        epochs=args.epochs,
+                        batch=batch_idx + 1,
+                        iter=args.eval_step,
+                        lr=scheduler_1.get_lr(),
+                        data=data_time.avg,
+                        bt=batch_time.avg,
+                        loss=losses.avg,
+                        loss_x=losses_x.avg,
+                        loss_u=losses_u.avg,
+                        mask=mask_probs.avg))
                 p_bar.update()
 
         if not args.no_progress:
@@ -404,8 +423,8 @@ def train(args, labeled_trainloader, unlabeled_trainloader, test_loader,
                 'ema_state_dict': ema_to_save.state_dict() if args.use_ema else None,
                 'acc': test_acc,
                 'best_acc': best_acc,
-                'optimizer': optimizer.state_dict(),
-                'scheduler': scheduler.state_dict(),
+                'optimizer_1': optimizer_1.state_dict(),
+                'optimizer_2': optimizer_2.state_dict(),
             }, is_best, args.out)
 
             test_accs.append(test_acc)
@@ -444,15 +463,16 @@ def test(args, test_loader, model, epoch):
             batch_time.update(time.time() - end)
             end = time.time()
             if not args.no_progress:
-                test_loader.set_description("Test Iter: {batch:4}/{iter:4}. Data: {data:.3f}s. Batch: {bt:.3f}s. Loss: {loss:.4f}. top1: {top1:.2f}. top5: {top5:.2f}. ".format(
-                    batch=batch_idx + 1,
-                    iter=len(test_loader),
-                    data=data_time.avg,
-                    bt=batch_time.avg,
-                    loss=losses.avg,
-                    top1=top1.avg,
-                    top5=top5.avg,
-                ))
+                test_loader.set_description(
+                    "Test Iter: {batch:4}/{iter:4}. Data: {data:.3f}s. Batch: {bt:.3f}s. Loss: {loss:.4f}. top1: {top1:.2f}. top5: {top5:.2f}. ".format(
+                        batch=batch_idx + 1,
+                        iter=len(test_loader),
+                        data=data_time.avg,
+                        bt=batch_time.avg,
+                        loss=losses.avg,
+                        top1=top1.avg,
+                        top5=top5.avg,
+                    ))
         if not args.no_progress:
             test_loader.close()
 
