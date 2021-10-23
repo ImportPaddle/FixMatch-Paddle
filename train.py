@@ -6,11 +6,10 @@ import random
 import shutil
 import time
 from collections import OrderedDict
-import paddle
 import numpy as np
 import torch
 import torch.nn.functional as F
-import torch.optim as optim
+#import torch.optim as optim
 from torch.optim.lr_scheduler import LambdaLR
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
 from torch.utils.data.distributed import DistributedSampler
@@ -19,7 +18,7 @@ from tqdm import tqdm
 
 import paddle
 import paddle.nn.functional
-import paddle.optimizer
+import paddle.optimizer as optim
 
 from dataset.cifar import DATASET_GETTERS
 from utils import AverageMeter, accuracy
@@ -39,9 +38,9 @@ def save_checkpoint(state, is_best, checkpoint, filename='checkpoint.pth.tar'):
 def set_seed(args):
     random.seed(args.seed)
     np.random.seed(args.seed)
-    torch.manual_seed(args.seed)
+    paddle.seed(args.seed)
     if args.n_gpu > 0:
-        torch.cuda.manual_seed_all(args.seed)
+        paddle.set_cuda_rng_state(args.seed)
 
 
 def get_cosine_schedule_with_warmup(optimizer,
@@ -160,7 +159,7 @@ def main():
         args.world_size = torch.distributed.get_world_size()
         args.n_gpu = 1
 
-    args.device = device if torch.cuda.is_available() else 'cpu'
+    args.device = device if paddle.device.is_compiled_with_cuda() else 'cpu'
 
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s -   %(message)s",
@@ -178,10 +177,10 @@ def main():
 
     if args.seed is not None:
         set_seed(args)
-
-    if args.local_rank in [-1, 0]:
-        os.makedirs(args.out, exist_ok=True)
-        args.writer = SummaryWriter(args.out)
+    #
+    # if args.local_rank in [-1, 0]:
+    #     os.makedirs(args.out, exist_ok=True)
+    #     args.writer = SummaryWriter(args.out)
 
     if args.dataset == 'cifar10':
         args.num_classes = 10
@@ -204,13 +203,13 @@ def main():
             args.model_width = 64
 
     if args.local_rank not in [-1, 0]:
-        torch.distributed.barrier()
+        paddle.distributed.barrier()
 
     labeled_dataset, unlabeled_dataset, test_dataset = DATASET_GETTERS[args.dataset](
         args, './data')
 
     if args.local_rank == 0:
-        torch.distributed.barrier()
+        paddle.distributed.barrier()
 
     train_sampler = RandomSampler if args.local_rank == -1 else DistributedSampler
 
@@ -235,12 +234,12 @@ def main():
         num_workers=args.num_workers)
 
     if args.local_rank not in [-1, 0]:
-        torch.distributed.barrier()
+        paddle.distributed.barrier()
 
     model = create_model(args)
 
     if args.local_rank == 0:
-        torch.distributed.barrier()
+        paddle.distributed.barrier()
     model.to(args.device)
 
     no_decay = ['bias', 'bn']
@@ -250,8 +249,8 @@ def main():
         {'params': [p for n, p in model.named_parameters() if any(
             nd in n for nd in no_decay)], 'weight_decay': 0.0}
     ]
-    optimizer = optim.SGD(grouped_parameters, lr=args.lr,
-                          momentum=0.9, nesterov=args.nesterov)
+    optimizer = optim.Momentum(parameters=grouped_parameters, learning_rate=args.lr,
+                          momentum=0.9, use_nesterov=args.nesterov)
 
     args.epochs = math.ceil(args.total_steps / args.eval_step)
     scheduler = get_cosine_schedule_with_warmup(
@@ -350,7 +349,7 @@ def train(args, labeled_trainloader, unlabeled_trainloader, test_loader,
             data_time.update(time.time() - end)
             batch_size = inputs_x.shape[0]
             inputs = interleave(
-                torch.cat((inputs_x, inputs_u_w, inputs_u_s)), 2*args.mu+1).to(args.device)
+                paddle.concat((inputs_x, inputs_u_w, inputs_u_s)), 2*args.mu+1).to(args.device)
             targets_x = targets_x.to(args.device)
             logits = model(inputs)
             logits = de_interleave(logits, 2*args.mu+1)
@@ -360,8 +359,8 @@ def train(args, labeled_trainloader, unlabeled_trainloader, test_loader,
 
             Lx = F.cross_entropy(logits_x, targets_x, reduction='mean')
 
-            pseudo_label = torch.softmax(logits_u_w.detach()/args.T, dim=-1)
-            max_probs, targets_u = torch.max(pseudo_label, dim=-1)
+            pseudo_label = paddle.nn.functional.softmax(logits_u_w.detach()/args.T, axis=-1)
+            max_probs, targets_u = paddle.max(pseudo_label, axis=-1)
             mask = max_probs.ge(args.threshold).float()
 
             Lu = (F.cross_entropy(logits_u_s, targets_u,
@@ -458,7 +457,7 @@ def test(args, test_loader, model, epoch):
         test_loader = tqdm(test_loader,
                            disable=args.local_rank not in [-1, 0])
 
-    with torch.no_grad():
+    with paddle.no_grad():
         for batch_idx, (inputs, targets) in enumerate(test_loader):
             data_time.update(time.time() - end)
             model.eval()
