@@ -1,10 +1,10 @@
+from paddle.vision import datasets, transforms
 import logging
 import math
 
 import numpy as np
 from PIL import Image
-from torchvision import datasets
-from torchvision import transforms
+from paddle.vision import datasets
 
 from dataset.randaugment import RandAugmentMC
 
@@ -21,11 +21,39 @@ normal_std = (0.5, 0.5, 0.5)
 import ssl
 ssl._create_default_https_context = ssl._create_unverified_context
 
-def get_cifar10(args, root):
+
+class CIFAR10SSL(datasets.Cifar10):
+    def __init__(self, data_file, indexs, mode='train',
+                 transform=None, download=True, backend='pil'):
+        super().__init__(data_file=data_file, mode=mode,
+                         transform=transform, download=download, backend=backend)
+        if indexs is not None:
+            # print(f"indexs: {indexs}")
+            self.data = np.asarray(self.data)[indexs]
+            # self.targets = np.array(self.targets)[indexs]
+
+    def __getitem__(self, index):
+        image, label = self.data[index]
+        # print(f"index {index}, image: {image.shape}")
+        image = np.reshape(image, [3, 32, 32])
+        image = image.transpose([1, 2, 0])  # HWC
+
+        if self.backend == 'pil':
+            image = Image.fromarray(image.astype('uint8'))
+        if self.transform is not None:
+            image = self.transform(image)
+
+        if self.backend == 'pil':
+            return image, np.array(label).astype('int64')
+
+        return image, label
+
+
+def get_cifar10(args, data_file):
     transform_labeled = transforms.Compose([
         transforms.RandomHorizontalFlip(),
         transforms.RandomCrop(size=32,
-                              padding=int(32*0.125),
+                              padding=int(32 * 0.125),
                               padding_mode='reflect'),
         transforms.ToTensor(),
         transforms.Normalize(mean=cifar10_mean, std=cifar10_std)
@@ -34,61 +62,32 @@ def get_cifar10(args, root):
         transforms.ToTensor(),
         transforms.Normalize(mean=cifar10_mean, std=cifar10_std)
     ])
-    base_dataset = datasets.CIFAR10(root, train=True, download=True)
 
-    train_labeled_idxs, train_unlabeled_idxs = x_u_split(
-        args, base_dataset.targets)
+    base_dataset = datasets.Cifar10(data_file=data_file,
+                                    mode='train',
+                                    download=True,
+                                    transform=transform_val)
 
-    train_labeled_dataset = CIFAR10SSL(
-        root, train_labeled_idxs, train=True,
-        transform=transform_labeled)
+    train_labeled_idxs, train_unlabeled_idxs = x_u_split(args, np.asarray(base_dataset.data)[:, 1])  # 取标签列
 
-    train_unlabeled_dataset = CIFAR10SSL(
-        root, train_unlabeled_idxs, train=True,
-        transform=TransformFixMatch(mean=cifar10_mean, std=cifar10_std))
+    train_labeled_dataset = CIFAR10SSL(data_file, train_labeled_idxs,
+                                       mode='train',
+                                       transform=transform_labeled)
 
-    test_dataset = datasets.CIFAR10(
-        root, train=False, transform=transform_val, download=False)
-    return train_labeled_dataset, train_unlabeled_dataset, test_dataset
+    train_unlabeled_dataset = CIFAR10SSL(data_file, train_unlabeled_idxs,
+                                         mode='train',
+                                         transform=TransformFixMatch(mean=cifar10_mean, std=cifar10_std))
 
-
-def get_cifar100(args, root):
-
-    transform_labeled = transforms.Compose([
-        transforms.RandomHorizontalFlip(),
-        transforms.RandomCrop(size=32,
-                              padding=int(32*0.125),
-                              padding_mode='reflect'),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=cifar100_mean, std=cifar100_std)])
-
-    transform_val = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize(mean=cifar100_mean, std=cifar100_std)])
-
-    base_dataset = datasets.CIFAR100(
-        root, train=True, download=True)
-
-    train_labeled_idxs, train_unlabeled_idxs = x_u_split(
-        args, base_dataset.targets)
-
-    train_labeled_dataset = CIFAR100SSL(
-        root, train_labeled_idxs, train=True,
-        transform=transform_labeled)
-
-    train_unlabeled_dataset = CIFAR100SSL(
-        root, train_unlabeled_idxs, train=True,
-        transform=TransformFixMatch(mean=cifar100_mean, std=cifar100_std))
-
-    test_dataset = datasets.CIFAR100(
-        root, train=False, transform=transform_val, download=False)
+    test_dataset = datasets.Cifar10(data_file=data_file,
+                                    mode='test',
+                                    transform=transform_val,
+                                    download=True)
 
     return train_labeled_dataset, train_unlabeled_dataset, test_dataset
 
 
 def x_u_split(args, labels):
-    label_per_class = args.num_labeled // args.num_classes
-    labels = np.array(labels)
+    label_per_class = args.num_labeled // 10
     labeled_idx = []
     # unlabeled data: all data (https://github.com/kekmodel/FixMatch-pytorch/issues/10)
     unlabeled_idx = np.array(range(len(labels)))
@@ -112,12 +111,12 @@ class TransformFixMatch(object):
         self.weak = transforms.Compose([
             transforms.RandomHorizontalFlip(),
             transforms.RandomCrop(size=32,
-                                  padding=int(32*0.125),
+                                  padding=int(32 * 0.125),
                                   padding_mode='reflect')])
         self.strong = transforms.Compose([
             transforms.RandomHorizontalFlip(),
             transforms.RandomCrop(size=32,
-                                  padding=int(32*0.125),
+                                  padding=int(32 * 0.125),
                                   padding_mode='reflect'),
             RandAugmentMC(n=2, m=10)])
         self.normalize = transforms.Compose([
@@ -129,56 +128,4 @@ class TransformFixMatch(object):
         strong = self.strong(x)
         return self.normalize(weak), self.normalize(strong)
 
-
-class CIFAR10SSL(datasets.CIFAR10):
-    def __init__(self, root, indexs, train=True,
-                 transform=None, target_transform=None,
-                 download=False):
-        super().__init__(root, train=train,
-                         transform=transform,
-                         target_transform=target_transform,
-                         download=download)
-        if indexs is not None:
-            self.data = self.data[indexs]
-            self.targets = np.array(self.targets)[indexs]
-
-    def __getitem__(self, index):
-        img, target = self.data[index], self.targets[index]
-        img = Image.fromarray(img)
-
-        if self.transform is not None:
-            img = self.transform(img)
-
-        if self.target_transform is not None:
-            target = self.target_transform(target)
-
-        return img, target
-
-
-class CIFAR100SSL(datasets.CIFAR100):
-    def __init__(self, root, indexs, train=True,
-                 transform=None, target_transform=None,
-                 download=False):
-        super().__init__(root, train=train,
-                         transform=transform,
-                         target_transform=target_transform,
-                         download=download)
-        if indexs is not None:
-            self.data = self.data[indexs]
-            self.targets = np.array(self.targets)[indexs]
-
-    def __getitem__(self, index):
-        img, target = self.data[index], self.targets[index]
-        img = Image.fromarray(img)
-
-        if self.transform is not None:
-            img = self.transform(img)
-
-        if self.target_transform is not None:
-            target = self.target_transform(target)
-
-        return img, target
-
-
-DATASET_GETTERS = {'cifar10': get_cifar10,
-                   'cifar100': get_cifar100}
+DATASET_GETTERS = {'cifar10': get_cifar10}

@@ -8,18 +8,15 @@ import time
 from collections import OrderedDict
 import paddle
 import numpy as np
-import torch
-import torch.nn.functional as F
-import torch.optim as optim
-from torch.optim.lr_scheduler import LambdaLR
-from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
-from torch.utils.data.distributed import DistributedSampler
-from torch.utils.tensorboard import SummaryWriter
-from tqdm import tqdm
 
 import paddle
-import paddle.nn.functional
-import paddle.optimizer
+import paddle.nn.functional as F
+import paddle.optimizer as optim
+
+from paddle.optimizer.lr import LambdaDecay
+from paddle.io import DataLoader, RandomSampler, SequenceSampler
+
+from tqdm import tqdm
 
 from dataset.cifar import DATASET_GETTERS
 from utils import AverageMeter, accuracy
@@ -39,9 +36,6 @@ def save_checkpoint(state, is_best, checkpoint, filename='checkpoint.pth.tar'):
 def set_seed(args):
     random.seed(args.seed)
     np.random.seed(args.seed)
-    torch.manual_seed(args.seed)
-    if args.n_gpu > 0:
-        torch.cuda.manual_seed_all(args.seed)
 
 
 def get_cosine_schedule_with_warmup(optimizer,
@@ -56,7 +50,7 @@ def get_cosine_schedule_with_warmup(optimizer,
             float(max(1, num_training_steps - num_warmup_steps))
         return max(0., math.cos(math.pi * num_cycles * no_progress))
 
-    return LambdaLR(optimizer, _lr_lambda, last_epoch)
+    return LambdaDecay(optimizer, _lr_lambda, last_epoch)
 
 
 def interleave(x, size):
@@ -70,7 +64,7 @@ def de_interleave(x, size):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='PyTorch FixMatch Training')
+    parser = argparse.ArgumentParser(description='Paddle FixMatch Training')
     parser.add_argument('--gpu-id', default='0', type=int,
                         help='id(s) for CUDA_VISIBLE_DEVICES')
     parser.add_argument('--num-workers', type=int, default=4,
@@ -149,18 +143,9 @@ def main():
             (sum(p.numel() for p in model.parameters())/1e6).numpy()[0]))
         return model
 
-    if args.local_rank == -1:
-        device = torch.device('cuda', args.gpu_id)
-        args.world_size = 1
-        args.n_gpu = torch.cuda.device_count()
-    else:
-        torch.cuda.set_device(args.local_rank)
-        device = torch.device('cuda', args.local_rank)
-        torch.distributed.init_process_group(backend='nccl')
-        args.world_size = torch.distributed.get_world_size()
-        args.n_gpu = 1
-
-    args.device = device if torch.cuda.is_available() else 'cpu'
+    args.device = paddle.get_device()
+    args.world_size = 1
+    args.n_gpu = len(paddle.static.cuda_places())
 
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s -   %(message)s",
@@ -203,16 +188,10 @@ def main():
             args.model_depth = 29
             args.model_width = 64
 
-    if args.local_rank not in [-1, 0]:
-        torch.distributed.barrier()
-
     labeled_dataset, unlabeled_dataset, test_dataset = DATASET_GETTERS[args.dataset](
-        args, './data')
+        args, './data/cifar-10-python.tar.gz')
 
-    if args.local_rank == 0:
-        torch.distributed.barrier()
-
-    train_sampler = RandomSampler if args.local_rank == -1 else DistributedSampler
+    train_sampler = RandomSampler
 
     labeled_trainloader = DataLoader(
         labeled_dataset,
@@ -233,15 +212,7 @@ def main():
         sampler=SequentialSampler(test_dataset),
         batch_size=args.batch_size,
         num_workers=args.num_workers)
-
-    if args.local_rank not in [-1, 0]:
-        torch.distributed.barrier()
-
     model = create_model(args)
-
-    if args.local_rank == 0:
-        torch.distributed.barrier()
-    model.to(args.device)
 
     no_decay = ['bias', 'bn']
     grouped_parameters = [
@@ -281,11 +252,6 @@ def main():
         from apex import amp
         model, optimizer = amp.initialize(
             model, optimizer, opt_level=args.opt_level)
-
-    if args.local_rank != -1:
-        model = torch.nn.parallel.DistributedDataParallel(
-            model, device_ids=[args.local_rank],
-            output_device=args.local_rank, find_unused_parameters=True)
 
     logger.info("***** Running training *****")
     logger.info(f"  Task = {args.dataset}@{args.num_labeled}")
@@ -350,8 +316,8 @@ def train(args, labeled_trainloader, unlabeled_trainloader, test_loader,
             data_time.update(time.time() - end)
             batch_size = inputs_x.shape[0]
             inputs = interleave(
-                torch.cat((inputs_x, inputs_u_w, inputs_u_s)), 2*args.mu+1).to(args.device)
-            targets_x = targets_x.to(args.device)
+                paddle.concat((inputs_x, inputs_u_w, inputs_u_s)), 2*args.mu+1)
+            targets_x = targets_x
             logits = model(inputs)
             logits = de_interleave(logits, 2*args.mu+1)
             logits_x = logits[:batch_size]
@@ -360,8 +326,8 @@ def train(args, labeled_trainloader, unlabeled_trainloader, test_loader,
 
             Lx = F.cross_entropy(logits_x, targets_x, reduction='mean')
 
-            pseudo_label = torch.softmax(logits_u_w.detach()/args.T, dim=-1)
-            max_probs, targets_u = torch.max(pseudo_label, dim=-1)
+            pseudo_label = F.softmax(logits_u_w.detach()/args.T, axis=-1)
+            max_probs, targets_u = paddle.max(pseudo_label, axis=-1)
             mask = max_probs.ge(args.threshold).float()
 
             Lu = (F.cross_entropy(logits_u_s, targets_u,
@@ -458,13 +424,11 @@ def test(args, test_loader, model, epoch):
         test_loader = tqdm(test_loader,
                            disable=args.local_rank not in [-1, 0])
 
-    with torch.no_grad():
+    with paddle.no_grad():
         for batch_idx, (inputs, targets) in enumerate(test_loader):
             data_time.update(time.time() - end)
             model.eval()
 
-            inputs = inputs.to(args.device)
-            targets = targets.to(args.device)
             outputs = model(inputs)
             loss = F.cross_entropy(outputs, targets)
 
