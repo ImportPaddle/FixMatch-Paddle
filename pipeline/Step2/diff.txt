@@ -1,0 +1,49 @@
+[2021/10/23 17:07:17] root INFO: labeled_length: 
+[2021/10/23 17:07:17] root INFO: 	mean diff: check passed: True, value: 0.0
+[2021/10/23 17:07:17] root INFO: unlabeled_length: 
+[2021/10/23 17:07:17] root INFO: 	mean diff: check passed: True, value: 0.0
+[2021/10/23 17:07:17] root INFO: train_length: 
+[2021/10/23 17:07:17] root INFO: 	mean diff: check passed: True, value: 0.0
+[2021/10/23 17:07:17] root INFO: test_length: 
+[2021/10/23 17:07:17] root INFO: 	mean diff: check passed: True, value: 0.0
+[2021/10/23 17:07:17] root INFO: train_dataset_0: 
+[2021/10/23 17:07:17] root INFO: 	mean diff: check passed: False, value: 0.22939391434192657
+[2021/10/23 17:07:17] root INFO: test_dataset_0: 
+[2021/10/23 17:07:17] root INFO: 	mean diff: check passed: True, value: 1.2501914170570672e-08
+[2021/10/23 17:07:17] root INFO: train_dataset_1: 
+[2021/10/23 17:07:17] root INFO: 	mean diff: check passed: False, value: 0.28843188285827637
+[2021/10/23 17:07:17] root INFO: test_dataset_1: 
+[2021/10/23 17:07:17] root INFO: 	mean diff: check passed: True, value: 1.6628595389533984e-08
+[2021/10/23 17:07:17] root INFO: train_dataset_2: 
+[2021/10/23 17:07:17] root INFO: 	mean diff: check passed: False, value: 0.3669602870941162
+[2021/10/23 17:07:17] root INFO: test_dataset_2: 
+[2021/10/23 17:07:17] root INFO: 	mean diff: check passed: True, value: 2.3962153150591803e-08
+[2021/10/23 17:07:17] root INFO: train_dataset_3: 
+[2021/10/23 17:07:17] root INFO: 	mean diff: check passed: False, value: 0.2373749017715454
+[2021/10/23 17:07:17] root INFO: test_dataset_3: 
+[2021/10/23 17:07:17] root INFO: 	mean diff: check passed: True, value: 8.320664157679403e-09
+[2021/10/23 17:07:17] root INFO: train_dataset_4: 
+[2021/10/23 17:07:17] root INFO: 	mean diff: check passed: False, value: 0.2716260850429535
+[2021/10/23 17:07:17] root INFO: test_dataset_4: 
+[2021/10/23 17:07:17] root INFO: 	mean diff: check passed: True, value: 3.377499524503946e-08
+[2021/10/23 17:07:17] root INFO: train_dataloader_0: 
+[2021/10/23 17:07:17] root INFO: 	mean diff: check passed: False, value: 0.29195448756217957
+[2021/10/23 17:07:17] root INFO: train_dataloader_1: 
+[2021/10/23 17:07:17] root INFO: 	mean diff: check passed: False, value: 0.29108336567878723
+[2021/10/23 17:07:17] root INFO: train_dataloader_2: 
+[2021/10/23 17:07:17] root INFO: 	mean diff: check passed: False, value: 0.2813706398010254
+[2021/10/23 17:07:17] root INFO: train_dataloader_3: 
+[2021/10/23 17:07:17] root INFO: 	mean diff: check passed: False, value: 0.2668290138244629
+[2021/10/23 17:07:17] root INFO: train_dataloader_4: 
+[2021/10/23 17:07:17] root INFO: 	mean diff: check passed: False, value: 0.29161861538887024
+[2021/10/23 17:07:17] root INFO: test_dataloader_0: 
+[2021/10/23 17:07:17] root INFO: 	mean diff: check passed: True, value: 1.482476363889873e-08
+[2021/10/23 17:07:17] root INFO: test_dataloader_1: 
+[2021/10/23 17:07:17] root INFO: 	mean diff: check passed: True, value: 1.596785637048015e-08
+[2021/10/23 17:07:17] root INFO: test_dataloader_2: 
+[2021/10/23 17:07:17] root INFO: 	mean diff: check passed: True, value: 1.743414124177889e-08
+[2021/10/23 17:07:17] root INFO: test_dataloader_3: 
+[2021/10/23 17:07:17] root INFO: 	mean diff: check passed: True, value: 1.679731020942654e-08
+[2021/10/23 17:07:17] root INFO: test_dataloader_4: 
+[2021/10/23 17:07:17] root INFO: 	mean diff: check passed: True, value: 1.6601171992647323e-08
+[2021/10/23 17:07:17] root INFO: diff check failed
