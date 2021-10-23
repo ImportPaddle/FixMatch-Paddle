@@ -108,6 +108,9 @@ venv.bak/
 
 # we
 .idea/
+
 result/
+
 .DS_Store
+
 *.npy

@@ -1,6 +1,6 @@
 import numpy as np
 
-from models import wideresnet_torch,wideresnet_paddle
+from pipeline.Step1.models import wideresnet_torch,wideresnet_paddle
 from reprod_log import ReprodDiffHelper,ReprodLogger
 import torch
 import paddle
