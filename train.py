@@ -259,11 +259,11 @@ def main():
         checkpoint = paddle.load(args.resume)
         best_acc = checkpoint['best_acc']
         args.start_epoch = checkpoint['epoch']
-        model.load_state_dict(checkpoint['state_dict'])
+        model.set_state_dict(checkpoint['state_dict'])
         if args.use_ema:
-            ema_model.ema.load_state_dict(checkpoint['ema_state_dict'])
-        optimizer_1.load_state_dict(checkpoint['optimizer_1'])
-        optimizer_2.load_state_dict(checkpoint['optimizer_2'])
+            ema_model.ema.set_state_dict(checkpoint['ema_state_dict'])
+        optimizer_1.set_state_dict(checkpoint['optimizer_1'])
+        optimizer_2.set_state_dict(checkpoint['optimizer_2'])
 
     if args.amp:
         from apex import amp
