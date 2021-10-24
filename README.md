@@ -22,10 +22,10 @@
 |:---:|:---:|:---:|:---:|
 | Paper (RA) | 86.19 ± 3.37 | 94.93 ± 0.65 | 95.74 ± 0.05 |
 | pytorch code | 93.60 | 95.31 | 95.77 |
-| **paddle code** | 93.13 (epoch 100) | 93.23 (epoch 88) | 94.125 (epoch 104) |
+| **paddle code** | 93.13 (epoch 100) | 93.36 (epoch 97) | 94.27 (epoch 117) |
 | **model_best** | [model_best@40.pdparams](https://github.com/ImportPaddle/FixMatch-Paddle/releases/tag/trainv0.8) | [model_best@250.pdparams](https://github.com/ImportPaddle/FixMatch-Paddle/releases/tag/trainv0.8) | [model_best@4000.pdparams](https://github.com/ImportPaddle/FixMatch-Paddle/releases/tag/trainv0.8) |
 
-\* paddle 精度截至 10.24 17:22。还在继续训练（单卡），精度还在**缓慢**提升
+\* paddle 精度截至 10.24 19:30。还在继续训练（单卡），精度还在**缓慢**提升
 
 ## 快速开始
 
@@ -61,10 +61,10 @@ python train.py --dataset cifar10 \
 - 方式1: 加载模型中保存的 dict:
 ```python
 import paddle 
-state=paddle.load("path/to/model_best.pdparams")
+state=paddle.load("path/to/moddel_best.pdparams")
 print(state.keys())  # 查看model中保存的dict
-print(state['epoch'])  # 查看是哪个epoch保存的最佳模型
-print(state['best_acc'])  # 查看模型的测试集精度
+print('epoch:', state['epoch'])  # 查看是哪个epoch保存的最佳模型
+print(f"best acc: {state['best_acc']}")  # 查看模型的测试集精度
 ```
 
 - 方式2: 使用命令行2，并添加命令行参数 `--eval_step 10`，以便更快地运行到 test 部分
