@@ -1,7 +1,7 @@
-from pipeline.Step4 import optimizer_torch
-from pipeline.Step4 import optimizer_paddle
-from pipeline.Step3.Evaluate_paddle import AverageMeter as AverageMeter_paddle
-from pipeline.Step3.Evaluate_paddle import AverageMeter as AverageMeter_torch
+from pipeline.Step3 import optimizer_torch
+from pipeline.Step3 import optimizer_paddle
+from pipeline.Step2.Evaluate_paddle import AverageMeter as AverageMeter_paddle
+from pipeline.Step2.Evaluate_paddle import AverageMeter as AverageMeter_torch
 from pipeline.utils import *
 import paddle
 import torch.nn.functional as F

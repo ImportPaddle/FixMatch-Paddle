@@ -1,8 +1,10 @@
 from pipeline.utils import *
-from pipeline.Step3.Evaluate_paddle import accuracy as accuracy_paddle
-from pipeline.Step3.Evaluate_torch import accuracy as accuracy_torch
-from pipeline.Step3.Evaluate_paddle import AverageMeter as AverageMeter_paddle
-from pipeline.Step3.Evaluate_paddle import AverageMeter as AverageMeter_torch
+
+from pipeline.Step2.Evaluate_paddle import accuracy as accuracy_paddle
+from pipeline.Step2.Evaluate_torch import accuracy as accuracy_torch
+from pipeline.Step2.Evaluate_paddle import AverageMeter as AverageMeter_paddle
+from pipeline.Step2.Evaluate_paddle import AverageMeter as AverageMeter_torch
+
 import paddle
 import torch
 import torch_py
