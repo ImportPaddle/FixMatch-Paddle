@@ -81,6 +81,34 @@ def gen_npy(seed_list, model_name='resnext'):
     reprod_log_paddle.save(f"./{model_name}_paddle.npy")
     reprod_log_torch.save(f"./{model_name}_torch.npy")
 
+def torch2paddle(params_torch):
+    model_1_params = params_torch
+    model_2_params = {}
+    for key in model_1_params:
+        weight = model_1_params[key].cpu().detach().numpy()
+        if 'running_mean' in key:
+            key = key.replace('running_mean', '_mean')
+        if 'running_var' in key:
+            key = key.replace('running_var', '_variance')
+        if 'classifier.weight' == key:
+            weight = weight.transpose()
+        model_2_params[key] = weight
+    return model_2_params, model_1_params
+
+def torch2paddle_ema(params_torch):
+    model_1_params = params_torch
+    model_2_params = {}
+    for key in model_1_params:
+        weight = model_1_params[key].cpu().detach().numpy()
+        if 'running_mean' in key:
+            key = key.replace('running_mean', '_mean')
+        if 'running_var' in key:
+            key = key.replace('running_var', '_variance')
+        if 'classifier.weight' == key:
+            weight = weight.transpose()
+        model_2_params[key] = weight
+    return model_2_params, model_1_params
+
 
 
 def gen_check(name):
@@ -94,3 +122,5 @@ def gen_check(name):
         diff_method="mean", diff_threshold=1e-6, path=f"./diff_{name}_model.txt")
 
 
+if __name__ == '__main__':
+    pre_params=torch.load('/Users/yangruizhi/Desktop/PR_list/FixMatch-Paddle/pipeline/utils/model_best.pth.tar')
