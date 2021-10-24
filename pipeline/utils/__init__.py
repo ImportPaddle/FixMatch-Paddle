@@ -45,7 +45,8 @@ def gen_fake_data(seed=100, shape=None):
     data = np.random.randn(batch_size, channel, input_w, input_H).astype(np.float32)
     data_paddle, data_torch = paddle.to_tensor(data), torch.from_numpy(data)
     return data_paddle, data_torch
-
+def data_paddle_2_torch(data_paddle):
+    return torch.from_numpy(data_paddle.numpy())
 
 def gen_fake_label(seed=100, shape=None, num_classes=10):
     if shape is None:
@@ -238,7 +239,7 @@ def get_args():
                         help='directory to output the result')
     parser.add_argument('--resume', default='', type=str,
                         help='path to latest checkpoint (default: none)')
-    parser.add_argument('--data-file', default='./data/cifar-10-python.tar.gz', type=str,
+    parser.add_argument('--data-file', default='../../data/cifar-10-python.tar.gz', type=str,
                         help='path to cifar10 dataset')
     parser.add_argument('--seed', default=None, type=int,
                         help="random seed")
@@ -386,6 +387,37 @@ def model_2_ema(args, model):
     else:
         raise EOFError('meile ')
 
+def gen_dataloader_paddle(args):
+    labeled_dataset, unlabeled_dataset, test_dataset = DATASET_GETTERS[args.dataset](
+        args, args.data_file)
+
+    labeled_sampler = RandomSampler(labeled_dataset)
+    labeled_batch_sampler = BatchSampler(sampler=labeled_sampler,
+                                         batch_size=args.batch_size,
+                                         drop_last=True)
+    labeled_trainloader = DataLoader(
+        labeled_dataset,
+        batch_sampler=labeled_batch_sampler,
+        num_workers=args.num_workers)
+
+    unlabeled_sampler = RandomSampler(unlabeled_dataset)
+    labeled_batch_sampler = BatchSampler(sampler=unlabeled_sampler,
+                                         batch_size=args.batch_size * args.mu,
+                                         drop_last=True)
+    unlabeled_trainloader = DataLoader(
+        unlabeled_dataset,
+        batch_sampler=labeled_batch_sampler,
+        num_workers=args.num_workers)
+
+    test_sampler = RandomSampler(test_dataset)
+    labeled_batch_sampler = BatchSampler(sampler=test_sampler,
+                                         batch_size=args.batch_size * args.mu,
+                                         drop_last=True)
+    test_loader = DataLoader(
+        test_dataset,
+        batch_sampler=labeled_batch_sampler,
+        num_workers=args.num_workers)
+    return labeled_trainloader,unlabeled_trainloader,test_loader
 
 if __name__ == '__main__':
     pre_params = torch.load('/Users/yangruizhi/Desktop/PR_list/FixMatch-Paddle/pipeline/utils/model_best.pth.tar')
