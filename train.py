@@ -253,7 +253,7 @@ def main():
 
     if args.use_ema:
         from models.ema import ModelEMA
-        ema_model = ModelEMA(args, model, args.ema_decay)
+        ema_model = ModelEMA(args, model)
 
     args.start_epoch = 0
 
