@@ -20,7 +20,8 @@
 |:---:|:---:|:---:|:---:|
 | Paper (RA) | 86.19 ± 3.37 | 94.93 ± 0.65 | 95.74 ± 0.05 |
 | pytorch code | 93.60 | 95.31 | 95.77 |
-| **paddle code** | 92.80 (epoch 75) | 93.07 (epoch 69) | 93.67 (epoch 80) |
+| **paddle code** | 92.89 (epoch 84) | 93.08 (epoch 77) | 93.99 (epoch 85) |
+| **model_best** | [model_best@40.pdparams](https://github.com/ImportPaddle/FixMatch-Paddle/releases/tag/trainv0.8) | [model_best@250.pdparams](https://github.com/ImportPaddle/FixMatch-Paddle/releases/tag/trainv0.8) | [model_best@4000.pdparams](https://github.com/ImportPaddle/FixMatch-Paddle/releases/tag/trainv0.8) |
 
 \* paddle 精度截至 10.24 17:22。还在继续训练（单卡），精度还在**缓慢**提升
 
@@ -80,6 +81,7 @@ python train.py --dataset cifar10 \
 - tqdm
 
 ## Citations
+
 ```
 @article{sohn2020fixmatch,
     title={FixMatch: Simplifying Semi-Supervised Learning with Consistency and Confidence},
