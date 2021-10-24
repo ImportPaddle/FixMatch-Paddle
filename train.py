@@ -115,6 +115,8 @@ def main():
                         help='directory to output the result')
     parser.add_argument('--resume', default='', type=str,
                         help='path to latest checkpoint (default: none)')
+    parser.add_argument('--data-file', default='./data/cifar-10-python.tar.gz', type=str,
+                        help='path to cifar10 dataset')
     parser.add_argument('--seed', default=None, type=int,
                         help="random seed")
     parser.add_argument("--amp", action="store_true",
@@ -195,7 +197,7 @@ def main():
             args.model_width = 64
 
     labeled_dataset, unlabeled_dataset, test_dataset = DATASET_GETTERS[args.dataset](
-        args, './data/cifar-10-python.tar.gz')
+        args, args.data_file)
 
     labeled_sampler = RandomSampler(labeled_dataset)
     labeled_batch_sampler = BatchSampler(sampler=labeled_sampler,
