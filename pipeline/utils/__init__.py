@@ -431,9 +431,4 @@ if __name__ == '__main__':
             continue
         if key=='ema_state_dict':
             params_paddle[key]
-
-
-    model_torch.ema.load_state_dict(params_torch)
-    model_paddle.ema.set_state_dict(params_paddle)
-    paddle.save(params_paddle, '../model_params/pre_params_ema_paddle.pdparams')
     print('success!!!')
