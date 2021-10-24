@@ -8,6 +8,7 @@ import time
 from collections import OrderedDict
 import numpy as np
 
+
 import paddle
 import paddle.nn.functional as F
 import paddle.optimizer as optim

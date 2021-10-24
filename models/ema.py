@@ -3,11 +3,11 @@ from copy import deepcopy
 import paddle
 
 class ModelEMA(object):
-    def __init__(self, args, model, decay):
+    def __init__(self, args, model):
         self.ema = deepcopy(model)
         self.ema.to(args.device)
         self.ema.eval()
-        self.decay = decay
+        self.decay = args.ema_decay
         self.ema_has_module = hasattr(self.ema, 'module')
         # Fix EMA. https://github.com/valencebond/FixMatch_pytorch thank you!
         self.param_keys = [k for k, _ in self.ema.named_parameters()]
