@@ -1,0 +1,7 @@
+[2021/10/24 19:36:45] root INFO: label_num:40: 
+[2021/10/24 19:36:45] root INFO: 	mean diff: check passed: False, value: 0.7022741144353688
+[2021/10/24 19:36:45] root INFO: label_num:250: 
+[2021/10/24 19:36:45] root INFO: 	mean diff: check passed: False, value: 2.0774525867808933
+[2021/10/24 19:36:45] root INFO: label_num:4000: 
+[2021/10/24 19:36:45] root INFO: 	mean diff: check passed: False, value: 1.746056185635652
+[2021/10/24 19:36:45] root INFO: diff check failed

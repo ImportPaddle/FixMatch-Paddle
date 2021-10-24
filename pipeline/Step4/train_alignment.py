@@ -10,14 +10,16 @@ import torch
 import torch_py
 import paddle_py
 
+
 def interleave_paddle(x, size):
     s = list(x.shape)
-    return x.reshape([-1, size] + s[1:]).transpose([1,0,2,3,4]).reshape([-1] + s[1:])
+    return x.reshape([-1, size] + s[1:]).transpose([1, 0, 2, 3, 4]).reshape([-1] + s[1:])
 
 
 def de_interleave_paddle(x, size):
     s = list(x.shape)
-    return x.reshape([size, -1] + s[1:]).transpose([1,0,2]).reshape([-1] + s[1:])
+    return x.reshape([size, -1] + s[1:]).transpose([1, 0, 2]).reshape([-1] + s[1:])
+
 
 def interleave_torch(x, size):
     s = list(x.shape)
@@ -29,11 +31,10 @@ def de_interleave_torch(x, size):
     return x.reshape([size, -1] + s[1:]).transpose(0, 1).reshape([-1] + s[1:])
 
 
-
-if __name__ == '__main__':
+def main_old():
     model_name = 'resnext'
-    save_name='Train_Alignment'
-    epoch_num=10
+    save_name = 'Train_Alignment'
+    epoch_num = 10
     model_paddle, model_torch = gen_model(model_name=model_name)
     model_paddle, model_torch = update_model(model_paddle, model_torch)
 
@@ -41,8 +42,8 @@ if __name__ == '__main__':
     top1_torch, top5_torch = AverageMeter_torch(), AverageMeter_torch()
     reprod_log_paddle = ReprodLogger()
     reprod_log_torch = ReprodLogger()
-    args=get_args()
-    labeled_trainloader, unlabeled_trainloader, test_loader=gen_dataloader_paddle(args)
+    args = get_args()
+    labeled_trainloader, unlabeled_trainloader, test_loader = gen_dataloader_paddle(args)
 
     if args.world_size > 1:
         labeled_epoch = 0
@@ -73,7 +74,7 @@ if __name__ == '__main__':
         batch_size = inputs_x.shape[0]
         inputs_paddle = interleave_paddle(
             paddle.concat((inputs_x, inputs_u_w, inputs_u_s)), 2 * args.mu + 1)
-        inputs_torch=data_paddle_2_torch(inputs_paddle)
+        inputs_torch = data_paddle_2_torch(inputs_paddle)
 
         logits_paddle, logits_torch = gen_res(model_paddle, inputs_paddle, model_torch, inputs_torch)
 
@@ -111,15 +112,15 @@ if __name__ == '__main__':
         mask = paddle.greater_equal(max_probs, args.threshold).float()
 
         Lu = (torch.nn.functional.cross_entropy(logits_u_s_torch, targets_u,
-                              reduction='none') * mask).mean()
+                                                reduction='none') * mask).mean()
 
         loss_torch = Lx + args.lambda_u * Lu
         # 计算 loss_torch 结束
         loss_paddle.backward()
         loss_torch.backward()
 
-        test_res_paddle=paddle_py.test(args,test_loader,model_paddle)
-        test_res_torch=torch_py.test(args,test_loader,model_torch)
+        test_res_paddle = paddle_py.test(args, test_loader, model_paddle)
+        test_res_torch = torch_py.test(args, test_loader, model_torch)
 
         reprod_log_paddle.add(f"epoch_{epoch + 1}_top1", np.array(test_res_paddle))
         reprod_log_torch.add(f"epoch_{epoch + 1}_top5", np.array(test_res_torch))
@@ -127,3 +128,29 @@ if __name__ == '__main__':
     reprod_log_torch.save(f"./{save_name}_torch.npy")
     gen_check(save_name)
 
+
+if __name__ == '__main__':
+    reprod_log_paddle = ReprodLogger()
+    reprod_log_torch = ReprodLogger()
+
+    save_name = 'accuracy'
+
+    reprod_log_torch.add(f"label_num:40", np.array(93.60))
+    reprod_log_torch.add(f"label_num:250", np.array(95.31))
+    reprod_log_torch.add(f"label_num:4000", np.array(95.77))
+
+    model_40_path = '/Users/yangruizhi/Desktop/PR_list/FixMatch-Paddle/pipeline/model_params/model_best@40.pdparams'
+    model_250_path = '/Users/yangruizhi/Desktop/PR_list/FixMatch-Paddle/pipeline/model_params/model_best@250.pdparams'
+    model_4000_path = '/Users/yangruizhi/Desktop/PR_list/FixMatch-Paddle/pipeline/model_params/model_best@4000.pdparams'
+
+    model_40_acc = paddle.load(model_40_path)['best_acc']
+    model_250_acc = paddle.load(model_250_path)['best_acc']
+    model_4000_acc = paddle.load(model_4000_path)['best_acc']
+
+    reprod_log_paddle.add(f"label_num:40", np.array(model_40_acc))
+    reprod_log_paddle.add(f"label_num:250", np.array(model_250_acc))
+    reprod_log_paddle.add(f"label_num:4000", np.array(model_4000_acc))
+
+    reprod_log_paddle.save(f"./{save_name}_paddle.npy")
+    reprod_log_torch.save(f"./{save_name}_torch.npy")
+    gen_check(save_name)
