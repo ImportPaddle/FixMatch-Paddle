@@ -1,7 +1,7 @@
-[2021/10/23 09:23:37] root INFO: data_1: 
-[2021/10/23 09:23:37] root INFO: 	mean diff: check passed: True, value: 5.591561880180507e-09
-[2021/10/23 09:23:37] root INFO: data_2: 
-[2021/10/23 09:23:37] root INFO: 	mean diff: check passed: True, value: 5.6353086641536265e-09
-[2021/10/23 09:23:37] root INFO: data_3: 
-[2021/10/23 09:23:37] root INFO: 	mean diff: check passed: True, value: 5.546212378249038e-09
-[2021/10/23 09:23:37] root INFO: diff check passed
+[2021/10/24 11:43:24] root INFO: data_1: 
+[2021/10/24 11:43:24] root INFO: 	mean diff: check passed: True, value: 5.397714719634905e-09
+[2021/10/24 11:43:24] root INFO: data_2: 
+[2021/10/24 11:43:24] root INFO: 	mean diff: check passed: True, value: 5.359316990194429e-09
+[2021/10/24 11:43:24] root INFO: data_3: 
+[2021/10/24 11:43:24] root INFO: 	mean diff: check passed: True, value: 5.321862950324885e-09
+[2021/10/24 11:43:24] root INFO: diff check passed

@@ -45,6 +45,9 @@ def gen_npy(seed_list):
     reprod_log_paddle = ReprodLogger()
     reprod_log_torch = ReprodLogger()
     model_paddle, model_torch=model_set()
+    # 更换一下绝对路径
+    state=torch.load('/Users/yangruizhi/Desktop/PR_list/FixMatch-Paddle/pipeline/Step1/models/model_best.pth.tar')
+    model_torch.load_state_dict(state['state_dict'])
     model_paddle.eval()
     model_torch.eval()
     for seed in seed_list:
