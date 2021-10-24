@@ -15,6 +15,7 @@ import paddle.optimizer as optim
 
 from paddle.optimizer.lr import LambdaDecay
 from paddle.io import DataLoader, RandomSampler, SequenceSampler, BatchSampler
+from visualdl import LogWriter
 
 from tqdm import tqdm
 
@@ -174,7 +175,7 @@ def main():
     #
     # if args.local_rank in [-1, 0]:
     #     os.makedirs(args.out, exist_ok=True)
-    #     args.writer = SummaryWriter(args.out)
+    args.writer = LogWriter(logdir=args.out)
 
     if args.dataset == 'cifar10':
         args.num_classes = 10
@@ -259,11 +260,11 @@ def main():
         checkpoint = paddle.load(args.resume)
         best_acc = checkpoint['best_acc']
         args.start_epoch = checkpoint['epoch']
-        model.load_state_dict(checkpoint['state_dict'])
+        model.set_state_dict(checkpoint['state_dict'])
         if args.use_ema:
-            ema_model.ema.load_state_dict(checkpoint['ema_state_dict'])
-        optimizer_1.load_state_dict(checkpoint['optimizer_1'])
-        optimizer_2.load_state_dict(checkpoint['optimizer_2'])
+            ema_model.ema.set_state_dict(checkpoint['ema_state_dict'])
+        optimizer_1.set_state_dict(checkpoint['optimizer_1'])
+        optimizer_2.set_state_dict(checkpoint['optimizer_2'])
 
     if args.amp:
         from apex import amp
@@ -406,7 +407,7 @@ def train(args, labeled_trainloader, unlabeled_trainloader, test_loader,
         if args.local_rank in [-1, 0]:
             test_loss, test_acc = test(args, test_loader, test_model, epoch)
 
-            args.writer.add_scalar('train/1.train_loss', losses.avg, epoch)
+            args.writer.add_scalar(tag='train/1.train_loss', value=losses.avg, step=epoch)
             args.writer.add_scalar('train/2.train_loss_x', losses_x.avg, epoch)
             args.writer.add_scalar('train/3.train_loss_u', losses_u.avg, epoch)
             args.writer.add_scalar('train/4.mask', mask_probs.avg, epoch)
