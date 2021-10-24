@@ -27,6 +27,8 @@
 
 ## 快速开始
 
+cifar10 数据集: [cifar-10-python.tar.gz](https://github.com/ImportPaddle/FixMatch-Paddle/releases/tag/trainv0.8)
+
 ### Train
 
 - 命令行1：使用 4000（40、250） 个有标签样本，从零开始训练:
@@ -36,7 +38,8 @@ python train.py --dataset cifar10 \
     --num-labeled 4000 \
     --arch wideresnet --batch-size 64 --lr 0.03 \
     --expand-labels --seed 5 \
-    --out results/cifar10@4000.5
+    --out results/cifar10@4000.5 \
+    --data-file path/to/cifar10
 ```
 
 - 命令行2：从预训练模型继续训练，添加命令行参数 `--resume path/to/latest-ckpt`
@@ -47,6 +50,7 @@ python train.py --dataset cifar10 \
     --arch wideresnet --batch-size 64 --lr 0.03 \
     --expand-labels --seed 5 \
     --out results/cifar10@4000.5 \
+    --data-file path/to/cifar10 \
     --resume path/to/latest-ckpt 
 ```
 
@@ -68,6 +72,7 @@ python train.py --dataset cifar10 \
     --arch wideresnet --batch-size 64 --lr 0.03 \
     --expand-labels --seed 5 \
     --out results/cifar10@4000.5 \
+    --data-file path/to/cifar10 \
     --resume path/to/latest-ckpt \
     --eval_step 10
 ```
