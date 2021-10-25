@@ -116,7 +116,7 @@ def main():
                         help='directory to output the result')
     parser.add_argument('--resume', default='', type=str,
                         help='path to latest checkpoint (default: none)')
-    parser.add_argument('--data-file', default='./data/cifar-10-python.tar.gz', type=str,
+    parser.add_argument('--data-file', default='FixMatch-Paddle/data/cifar-10-python.tar.gz', type=str,
                         help='path to cifar10 dataset')
     parser.add_argument('--seed', default=None, type=int,
                         help="random seed")
@@ -131,10 +131,6 @@ def main():
                         help="don't use progress bar")
 
     args = parser.parse_args()
-    logging.basicConfig(format='%(asctime)s - %(filename)s[line:%(lineno)d] - %(levelname)s: %(message)s',
-                        level=logging.DEBUG,
-                        filename=f'{args.out}/train@{args.num_labeled}.log',
-                        filemode='a')
 
     global best_acc
 
@@ -161,10 +157,15 @@ def main():
     args.device = paddle.get_device()
     args.world_size = 1
 
+    os.makedirs(args.out, exist_ok=True)
+
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s -   %(message)s",
         datefmt="%m/%d/%Y %H:%M:%S",
-        level=logging.INFO if args.local_rank in [-1, 0] else logging.WARN)
+        level=logging.INFO if args.local_rank in [-1, 0] else logging.WARN,
+        filename=f'{args.out}/train@{args.num_labeled}.log',
+        filemode='a'
+    )
 
     logger.warning(
         f"Process rank: {args.local_rank}, "
@@ -177,9 +178,7 @@ def main():
 
     if args.seed is not None:
         set_seed(args)
-    #
-    # if args.local_rank in [-1, 0]:
-    #     os.makedirs(args.out, exist_ok=True)
+
     args.writer = LogWriter(logdir=args.out)
 
     if args.dataset == 'cifar10':
@@ -259,6 +258,8 @@ def main():
 
     if args.resume:
         logger.info("==> Resuming from checkpoint..")
+        args.out = os.path.dirname(args.resume)
+        print(args.out)
         assert os.path.isfile(
             args.resume), "Error: no checkpoint directory found!"
         args.out = os.path.dirname(args.resume)
@@ -270,7 +271,6 @@ def main():
             ema_model.ema.set_state_dict(checkpoint['ema_state_dict'])
         optimizer_1.set_state_dict(checkpoint['optimizer_1'])
         optimizer_2.set_state_dict(checkpoint['optimizer_2'])
-
     if args.amp:
         from apex import amp
         model, optimizer_1 = amp.initialize(

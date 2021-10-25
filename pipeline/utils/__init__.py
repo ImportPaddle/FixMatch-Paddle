@@ -419,16 +419,18 @@ def gen_dataloader_paddle(args):
         num_workers=args.num_workers)
     return labeled_trainloader,unlabeled_trainloader,test_loader
 
+def modified_lr_params(params_paddle_path):
+    state=paddle.load(params_paddle_path)
+    state['optimizer_1']['LR_Scheduler']['last_lr']=state['optimizer_1']['LR_Scheduler']['last_lr']*4
+    state['optimizer_2']['LR_Scheduler']['last_lr'] = state['optimizer_2']['LR_Scheduler']['last_lr'] * 4
+
+    params_paddle_path_new=params_paddle_path.replace('best','best_')
+    paddle.save(state,params_paddle_path_new)
+
+
+
 if __name__ == '__main__':
-    pre_params = torch.load('/Users/yangruizhi/Desktop/PR_list/FixMatch-Paddle/pipeline/utils/model_best.pth.tar')
-    print(pre_params.keys())
-    params_paddle={}
-    model_name = 'wideresnet'
-    model_paddle, model_torch = gen_model(model_name)
-    for key in pre_params.keys()[:5]:
-        if key=='state_dict':
-            params_paddle[key] = torch2paddle_ema(pre_params[key])
-            continue
-        if key=='ema_state_dict':
-            params_paddle[key]
+
+
+    modified_lr_params('/Users/yangruizhi/Desktop/PR_list/FixMatch-Paddle/pipeline/model_params/model_best.pdparams')
     print('success!!!')
