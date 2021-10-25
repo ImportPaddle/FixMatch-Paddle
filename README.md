@@ -14,7 +14,8 @@
 
 ## 复现精度
 
-模型和训练日志在 Release 中
+模型和训练日志在 Release 中，也可到百度网盘提取，链接：https://pan.baidu.com/s/14j8AQnvLgBFgCfZzHbfpxQ 
+提取码：kimn
 
 ### CIFAR10
 
