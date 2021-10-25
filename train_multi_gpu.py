@@ -8,21 +8,22 @@ import time
 from collections import OrderedDict
 import numpy as np
 
-
 import paddle
 import paddle.nn.functional as F
 import paddle.optimizer as optim
-
 from paddle.optimizer.lr import LambdaDecay
-from paddle.io import DataLoader, RandomSampler, SequenceSampler, BatchSampler
-from visualdl import LogWriter
+from paddle.io import DataLoader, RandomSampler, SequenceSampler, BatchSampler, DistributedBatchSampler
+import paddle.distributed as dist
+# from visualdl import LogWriter
 
 from tqdm import tqdm
 
 from dataset.cifar import DATASET_GETTERS
 from utils import AverageMeter, accuracy
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger()
+# logger_2 = logging.getLogger()
+
 best_acc = 0
 
 
@@ -60,12 +61,12 @@ def get_cosine_schedule_with_warmup(learning_rate, num_warmup_steps,
 
 def interleave(x, size):
     s = list(x.shape)
-    return x.reshape([-1, size] + s[1:]).transpose([1,0,2,3,4]).reshape([-1] + s[1:])
+    return x.reshape([-1, size] + s[1:]).transpose([1, 0, 2, 3, 4]).reshape([-1] + s[1:])
 
 
 def de_interleave(x, size):
     s = list(x.shape)
-    return x.reshape([size, -1] + s[1:]).transpose([1,0,2]).reshape([-1] + s[1:])
+    return x.reshape([size, -1] + s[1:]).transpose([1, 0, 2]).reshape([-1] + s[1:])
 
 
 def main():
@@ -116,7 +117,7 @@ def main():
                         help='directory to output the result')
     parser.add_argument('--resume', default='', type=str,
                         help='path to latest checkpoint (default: none)')
-    parser.add_argument('--data-file', default='FixMatch-Paddle/data/cifar-10-python.tar.gz', type=str,
+    parser.add_argument('--data-file', default='./data/cifar-10-python.tar.gz', type=str,
                         help='path to cifar10 dataset')
     parser.add_argument('--seed', default=None, type=int,
                         help="random seed")
@@ -156,7 +157,7 @@ def main():
 
     args.device = paddle.get_device()
     args.world_size = 1
-
+    # args.writer = LogWriter(logdir=args.out)
     os.makedirs(args.out, exist_ok=True)
 
     logging.basicConfig(
@@ -167,19 +168,30 @@ def main():
         filemode='a'
     )
 
+    # BASIC_FORMAT = "%(asctime)s - %(levelname)s - %(name)s -   %(message)s",
+    # DATE_FORMAT = "%m/%d/%Y %H:%M:%S"
+
+    # formatter = logging.Formatter(BASIC_FORMAT, DATE_FORMAT)
+    chlr = logging.StreamHandler()  # 输出到控制台的handler
+    logger.addHandler(chlr)
+    # chlr.setFormatter(formatter)
+    # chlr.setLevel('INFO')  # 也可以不设置，不设置就默认用logger的level
+    # fhlr = logging.FileHandler('example.log') # 输出到文件的handler
+    # fhlr.setFormatter(formatter)
+    # logger.addHandler(fhlr)
+    # logger.info('==============================logger success !')
+    # raise NotImplemented
+
     logger.warning(
         f"Process rank: {args.local_rank}, "
         f"device: {args.device}, "
         f"n_gpu: {args.n_gpu}, "
         f"distributed training: {bool(args.local_rank != -1)}, "
         f"16-bits training: {args.amp}", )
-
     logger.info(dict(args._get_kwargs()))
 
     if args.seed is not None:
         set_seed(args)
-
-    args.writer = LogWriter(logdir=args.out)
 
     if args.dataset == 'cifar10':
         args.num_classes = 10
@@ -204,32 +216,59 @@ def main():
     labeled_dataset, unlabeled_dataset, test_dataset = DATASET_GETTERS[args.dataset](
         args, args.data_file)
 
-    labeled_sampler = RandomSampler(labeled_dataset)
-    labeled_batch_sampler = BatchSampler(sampler=labeled_sampler,
-                                         batch_size=args.batch_size,
-                                         drop_last=True)
-    labeled_trainloader = DataLoader(
-        labeled_dataset,
-        batch_sampler=labeled_batch_sampler,
-        num_workers=args.num_workers)
+    if paddle.distributed.get_world_size() > 1:
+        paddle.distributed.init_parallel_env()
 
-    unlabeled_sampler = RandomSampler(unlabeled_dataset)
-    labeled_batch_sampler = BatchSampler(sampler=unlabeled_sampler,
-                                         batch_size=args.batch_size * args.mu,
-                                         drop_last=True)
-    unlabeled_trainloader = DataLoader(
-        unlabeled_dataset,
-        batch_sampler=labeled_batch_sampler,
-        num_workers=args.num_workers)
+        labeled_batch_sampler = DistributedBatchSampler(labeled_dataset,
+                                                        batch_size=args.batch_size,
+                                                        drop_last=True, shuffle=True)
+        labeled_trainloader = DataLoader(
+            labeled_dataset,
+            batch_sampler=labeled_batch_sampler,
+            num_workers=args.num_workers)
 
-    test_sampler = RandomSampler(test_dataset)
-    labeled_batch_sampler = BatchSampler(sampler=test_sampler,
-                                         batch_size=args.batch_size * args.mu,
-                                         drop_last=True)
-    test_loader = DataLoader(
-        test_dataset,
-        batch_sampler=labeled_batch_sampler,
-        num_workers=args.num_workers)
+        labeled_batch_sampler = DistributedBatchSampler(unlabeled_dataset,
+                                                        batch_size=args.batch_size * args.mu,
+                                                        drop_last=True, shuffle=True)
+        unlabeled_trainloader = DataLoader(
+            unlabeled_dataset,
+            batch_sampler=labeled_batch_sampler,
+            num_workers=args.num_workers)
+
+        labeled_batch_sampler = DistributedBatchSampler(test_dataset,
+                                                        batch_size=args.batch_size * args.mu,
+                                                        drop_last=True)
+        test_loader = DataLoader(
+            test_dataset,
+            batch_sampler=labeled_batch_sampler,
+            num_workers=args.num_workers)
+    else:
+        labeled_sampler = RandomSampler(labeled_dataset)
+        labeled_batch_sampler = BatchSampler(sampler=labeled_sampler,
+                                             batch_size=args.batch_size,
+                                             drop_last=True)
+        labeled_trainloader = DataLoader(
+            labeled_dataset,
+            batch_sampler=labeled_batch_sampler,
+            num_workers=args.num_workers)
+
+        unlabeled_sampler = RandomSampler(unlabeled_dataset)
+        labeled_batch_sampler = BatchSampler(sampler=unlabeled_sampler,
+                                             batch_size=args.batch_size * args.mu,
+                                             drop_last=True)
+        unlabeled_trainloader = DataLoader(
+            unlabeled_dataset,
+            batch_sampler=labeled_batch_sampler,
+            num_workers=args.num_workers)
+
+        test_sampler = RandomSampler(test_dataset)
+        labeled_batch_sampler = BatchSampler(sampler=test_sampler,
+                                             batch_size=args.batch_size * args.mu,
+                                             drop_last=True)
+        test_loader = DataLoader(
+            test_dataset,
+            batch_sampler=labeled_batch_sampler,
+            num_workers=args.num_workers)
 
     model = create_model(args)
 
@@ -258,11 +297,9 @@ def main():
 
     if args.resume:
         logger.info("==> Resuming from checkpoint..")
-        args.out = os.path.dirname(args.resume)
-        print(args.out)
         assert os.path.isfile(
             args.resume), "Error: no checkpoint directory found!"
-        # args.out = os.path.dirname(args.resume)
+
         checkpoint = paddle.load(args.resume)
         best_acc = checkpoint['best_acc']
         args.start_epoch = checkpoint['epoch']
@@ -271,6 +308,10 @@ def main():
             ema_model.ema.set_state_dict(checkpoint['ema_state_dict'])
         optimizer_1.set_state_dict(checkpoint['optimizer_1'])
         optimizer_2.set_state_dict(checkpoint['optimizer_2'])
+        if 'FixMatch-Paddle/params' in args.resume:
+            args.resume = args.out
+            args.out = os.path.dirname(args.resume)
+
     if args.amp:
         from apex import amp
         model, optimizer_1 = amp.initialize(
@@ -288,6 +329,8 @@ def main():
 
     optimizer_1.clear_grad()
     optimizer_2.clear_grad()
+    if paddle.distributed.get_world_size() > 1:
+        model = paddle.DataParallel(model)
     train(args, labeled_trainloader, unlabeled_trainloader, test_loader,
           model, optimizer_1, optimizer_2, ema_model, scheduler_1, scheduler_2)
 
@@ -317,9 +360,6 @@ def train(args, labeled_trainloader, unlabeled_trainloader, test_loader,
         losses_x = AverageMeter()
         losses_u = AverageMeter()
         mask_probs = AverageMeter()
-        if not args.no_progress:
-            p_bar = tqdm(range(args.eval_step),
-                         disable=args.local_rank not in [-1, 0])
         for batch_idx in range(args.eval_step):
             try:
                 inputs_x, targets_x = labeled_iter.next()
@@ -343,7 +383,6 @@ def train(args, labeled_trainloader, unlabeled_trainloader, test_loader,
             batch_size = inputs_x.shape[0]
             inputs = interleave(
                 paddle.concat((inputs_x, inputs_u_w, inputs_u_s)), 2 * args.mu + 1)
-
             logits = model(inputs)
             logits = de_interleave(logits, 2 * args.mu + 1)
             logits_x = logits[:batch_size]
@@ -354,29 +393,25 @@ def train(args, labeled_trainloader, unlabeled_trainloader, test_loader,
 
             pseudo_label = F.softmax(logits_u_w.detach() / args.T, axis=-1)
 
-            max_probs, targets_u = paddle.max(pseudo_label, axis=-1),paddle.argmax(pseudo_label, axis=-1)
-            mask = paddle.greater_equal(max_probs,paddle.to_tensor(args.threshold)).astype(paddle.float32)
+            max_probs, targets_u = paddle.max(pseudo_label, axis=-1), paddle.argmax(pseudo_label, axis=-1)
+            mask = paddle.greater_equal(max_probs, paddle.to_tensor(args.threshold)).astype(paddle.float32)
 
             Lu = (F.cross_entropy(logits_u_s, targets_u,
                                   reduction='none') * mask).mean()
 
             loss = Lx + args.lambda_u * Lu
 
-            if args.amp:
-                with amp.scale_loss(loss, optimizer_1) as scaled_loss:
-                    scaled_loss.backward()
-                with amp.scale_loss(loss, optimizer_2) as scaled_loss:
-                    scaled_loss.backward()
-            else:
-                loss.backward()
+            loss.backward()
 
             losses.update(loss.item())
             losses_x.update(Lx.item())
             losses_u.update(Lu.item())
+
             optimizer_1.step()
             scheduler_1.step()
             optimizer_2.step()
             scheduler_2.step()
+
             if args.use_ema:
                 ema_model.update(model)
             optimizer_1.clear_grad()
@@ -386,76 +421,62 @@ def train(args, labeled_trainloader, unlabeled_trainloader, test_loader,
             end = time.time()
             mask_probs.update(mask.mean().item())
             if not args.no_progress:
-                logger.info(
-                    "Train Epoch: {epoch}/{epochs:4}. Iter: {batch:4}/{iter:4}. LR: {lr:.4f}. Data: {data:.3f}s. Batch: {bt:.3f}s. Loss: {loss:.4f}. Loss_x: {loss_x:.4f}. Loss_u: {loss_u:.4f}. Mask: {mask:.2f}. ".format(
-                        epoch=epoch + 1,
-                        epochs=args.epochs,
-                        batch=batch_idx + 1,
-                        iter=args.eval_step,
-                        lr=scheduler_1.get_lr(),
-                        data=data_time.avg,
-                        bt=batch_time.avg,
-                        loss=losses.avg,
-                        loss_x=losses_x.avg,
-                        loss_u=losses_u.avg,
-                        mask=mask_probs.avg))
-                p_bar.set_description(
-                    "Train Epoch: {epoch}/{epochs:4}. Iter: {batch:4}/{iter:4}. LR: {lr:.4f}. Data: {data:.3f}s. Batch: {bt:.3f}s. Loss: {loss:.4f}. Loss_x: {loss_x:.4f}. Loss_u: {loss_u:.4f}. Mask: {mask:.2f}. ".format(
-                        epoch=epoch + 1,
-                        epochs=args.epochs,
-                        batch=batch_idx + 1,
-                        iter=args.eval_step,
-                        lr=scheduler_1.get_lr(),
-                        data=data_time.avg,
-                        bt=batch_time.avg,
-                        loss=losses.avg,
-                        loss_x=losses_x.avg,
-                        loss_u=losses_u.avg,
-                        mask=mask_probs.avg))
-                p_bar.update()
+                if paddle.get_device() == 'gpu:0':
+                    logger.info(
+                        "Train Epoch: {epoch}/{epochs:4}. Iter: {batch:4}/{iter:4}. LR: {lr:.4f}. Data: {data:.3f}s. Batch: {bt:.3f}s. Loss: {loss:.4f}. Loss_x: {loss_x:.4f}. Loss_u: {loss_u:.4f}. Mask: {mask:.2f}. ".format(
+                            epoch=epoch + 1,
+                            epochs=args.epochs,
+                            batch=batch_idx + 1,
+                            iter=args.eval_step,
+                            lr=scheduler_1.get_lr(),
+                            data=data_time.avg,
+                            bt=batch_time.avg,
+                            loss=losses.avg,
+                            loss_x=losses_x.avg,
+                            loss_u=losses_u.avg,
+                            mask=mask_probs.avg))
 
-        if not args.no_progress:
-            p_bar.close()
-
-        if args.use_ema:
-            test_model = ema_model.ema
-        else:
-            test_model = model
-
-        if args.local_rank in [-1, 0]:
-            test_loss, test_acc = test(args, test_loader, test_model, epoch)
-
-            args.writer.add_scalar(tag='train/1.train_loss', value=losses.avg, step=epoch)
-            args.writer.add_scalar('train/2.train_loss_x', losses_x.avg, epoch)
-            args.writer.add_scalar('train/3.train_loss_u', losses_u.avg, epoch)
-            args.writer.add_scalar('train/4.mask', mask_probs.avg, epoch)
-            args.writer.add_scalar('test/1.test_acc', test_acc, epoch)
-            args.writer.add_scalar('test/2.test_loss', test_loss, epoch)
-
-            is_best = test_acc > best_acc
-            best_acc = max(test_acc, best_acc)
-
-            model_to_save = model.module if hasattr(model, "module") else model
+        if paddle.get_device() == 'gpu:0':
             if args.use_ema:
-                ema_to_save = ema_model.ema.module if hasattr(
-                    ema_model.ema, "module") else ema_model.ema
-            save_checkpoint({
-                'epoch': epoch + 1,
-                'state_dict': model_to_save.state_dict(),
-                'ema_state_dict': ema_to_save.state_dict() if args.use_ema else None,
-                'acc': test_acc,
-                'best_acc': best_acc,
-                'optimizer_1': optimizer_1.state_dict(),
-                'optimizer_2': optimizer_2.state_dict(),
-            }, is_best, args.out)
+                test_model = ema_model.ema
+            else:
+                test_model = model
 
-            test_accs.append(test_acc)
-            logger.info('Best top-1 acc: {:.2f}'.format(best_acc))
-            logger.info('Mean top-1 acc: {:.2f}\n'.format(
-                np.mean(test_accs[-20:])))
+            if args.local_rank in [-1, 0]:
+                test_loss, test_acc = test(args, test_loader, test_model, epoch)
 
-    if args.local_rank in [-1, 0]:
-        args.writer.close()
+                # args.writer.add_scalar(tag='train/1.train_loss', value=losses.avg, step=epoch)
+                # args.writer.add_scalar('train/2.train_loss_x', losses_x.avg, epoch)
+                # args.writer.add_scalar('train/3.train_loss_u', losses_u.avg, epoch)
+                # args.writer.add_scalar('train/4.mask', mask_probs.avg, epoch)
+                # args.writer.add_scalar('test/1.test_acc', test_acc, epoch)
+                # args.writer.add_scalar('test/2.test_loss', test_loss, epoch)
+
+                is_best = test_acc > best_acc
+                best_acc = max(test_acc, best_acc)
+
+                model_to_save = model.module if hasattr(model, "module") else model
+                if args.use_ema:
+                    ema_to_save = ema_model.ema.module if hasattr(
+                        ema_model.ema, "module") else ema_model.ema
+
+                save_checkpoint({
+                    'epoch': epoch + 1,
+                    'state_dict': model_to_save.state_dict(),
+                    'ema_state_dict': ema_to_save.state_dict() if args.use_ema else None,
+                    'acc': test_acc,
+                    'best_acc': best_acc,
+                    'optimizer_1': optimizer_1.state_dict(),
+                    'optimizer_2': optimizer_2.state_dict(),
+                }, is_best, args.out)
+                # logger_2.info(f'Epoch:{epoch + 1}/{args.epochs},Best Top-1 acc:{best_acc},Test Top-1 acc:{test_acc}')
+                test_accs.append(test_acc)
+                logger.info('Best top-1 acc: {:.2f}'.format(best_acc))
+                logger.info('Mean top-1 acc: {:.2f}\n'.format(
+                    np.mean(test_accs[-20:])))
+
+    # if args.local_rank in [-1, 0]:
+    #     args.writer.close()
 
 
 def test(args, test_loader, model, epoch):
@@ -465,10 +486,6 @@ def test(args, test_loader, model, epoch):
     top1 = AverageMeter()
     top5 = AverageMeter()
     end = time.time()
-
-    if not args.no_progress:
-        test_loader = tqdm(test_loader,
-                           disable=args.local_rank not in [-1, 0])
 
     with paddle.no_grad():
         for batch_idx, (inputs, targets) in enumerate(test_loader):
@@ -485,28 +502,17 @@ def test(args, test_loader, model, epoch):
             batch_time.update(time.time() - end)
             end = time.time()
             if not args.no_progress:
-                logger.info(
-                    "Test Iter: {batch:4}/{iter:4}. Data: {data:.3f}s. Batch: {bt:.3f}s. Loss: {loss:.4f}. top1: {top1:.2f}. top5: {top5:.2f}. ".format(
-                        batch=batch_idx + 1,
-                        iter=len(test_loader),
-                        data=data_time.avg,
-                        bt=batch_time.avg,
-                        loss=losses.avg,
-                        top1=top1.avg,
-                        top5=top5.avg,
-                    ))
-                test_loader.set_description(
-                    "Test Iter: {batch:4}/{iter:4}. Data: {data:.3f}s. Batch: {bt:.3f}s. Loss: {loss:.4f}. top1: {top1:.2f}. top5: {top5:.2f}. ".format(
-                        batch=batch_idx + 1,
-                        iter=len(test_loader),
-                        data=data_time.avg,
-                        bt=batch_time.avg,
-                        loss=losses.avg,
-                        top1=top1.avg,
-                        top5=top5.avg,
-                    ))
-        if not args.no_progress:
-            test_loader.close()
+                if paddle.get_device() == 'gpu:0':
+                    logger.info(
+                        "Test Iter: {batch:4}/{iter:4}. Data: {data:.3f}s. Batch: {bt:.3f}s. Loss: {loss:.4f}. top1: {top1:.2f}. top5: {top5:.2f}. ".format(
+                            batch=batch_idx + 1,
+                            iter=len(test_loader),
+                            data=data_time.avg,
+                            bt=batch_time.avg,
+                            loss=losses.avg,
+                            top1=top1.avg,
+                            top5=top5.avg,
+                        ))
 
     logger.info("top-1 acc: {:.2f}".format(top1.avg))
     logger.info("top-5 acc: {:.2f}".format(top5.avg))

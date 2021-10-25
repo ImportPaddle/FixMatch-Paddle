@@ -1,19 +1,3 @@
-import numpy as np
-
-from pipeline.Step1.models import wideresnet_torch, wideresnet_paddle
-
-from pipeline.Step1.models import resnext_paddle, resnext_torch
-from reprod_log import ReprodDiffHelper, ReprodLogger
-import torch
-
-import paddle
-import paddle.nn.functional as F
-import paddle.optimizer as optim
-
-from paddle.optimizer.lr import LambdaDecay
-from paddle.io import DataLoader, RandomSampler, SequenceSampler, BatchSampler
-
-from tqdm import tqdm
 import argparse
 import logging
 import math
@@ -21,131 +5,25 @@ import os
 import random
 import shutil
 import time
+from collections import OrderedDict
+import numpy as np
+
+import paddle
+import paddle.nn.functional as F
+import paddle.optimizer as optim
+from paddle.optimizer.lr import LambdaDecay
+from paddle.io import DataLoader, RandomSampler, SequenceSampler, BatchSampler, DistributedBatchSampler
+import paddle.distributed as dist
+# from visualdl import LogWriter
+
+from tqdm import tqdm
 
 from dataset.cifar import DATASET_GETTERS
 from utils import AverageMeter, accuracy
 
+logger = logging.getLogger()
+# logger_2 = logging.getLogger()
 
-def gen_model(model_name='resnext'):
-    if model_name == 'resnext':
-        resnext_paddle_b = resnext_paddle.build_resnext(cardinality=4, depth=28, width=4, num_classes=10)
-        resnext_torch_b = resnext_torch.build_resnext(cardinality=4, depth=28, width=4, num_classes=10)
-        return resnext_paddle_b, resnext_torch_b
-    if model_name == 'wideresnet':
-        wideresnet_paddle_b = wideresnet_paddle.build_wideresnet(depth=28, widen_factor=2, dropout=0, num_classes=10)
-        wideresnet_torch_b = wideresnet_torch.build_wideresnet(depth=28, widen_factor=2, dropout=0, num_classes=10)
-        return wideresnet_paddle_b, wideresnet_torch_b
-
-
-def gen_fake_data(seed=100, shape=None):
-    if shape is None:
-        shape = [64, 3, 32, 32]
-    batch_size, channel, input_w, input_H = shape
-    np.random.seed(seed)
-    data = np.random.randn(batch_size, channel, input_w, input_H).astype(np.float32)
-    data_paddle, data_torch = paddle.to_tensor(data), torch.from_numpy(data)
-    return data_paddle, data_torch
-def data_paddle_2_torch(data_paddle):
-    return torch.from_numpy(data_paddle.numpy())
-
-def gen_fake_label(seed=100, shape=None, num_classes=10):
-    if shape is None:
-        shape = 64
-    np.random.seed(seed)
-    fake_label = np.random.randint(0, 10, shape)
-    label_paddle, label_torch = paddle.to_tensor(fake_label), torch.from_numpy(fake_label)
-    return label_paddle, label_torch
-
-
-def gen_params(model_1):
-    model_1_params = model_1.state_dict()
-    model_2_params = {}
-    for key in model_1_params:
-        weight = model_1_params[key].cpu().detach().numpy()
-        if 'running_mean' in key:
-            key = key.replace('running_mean', '_mean')
-        if 'running_var' in key:
-            key = key.replace('running_var', '_variance')
-        if 'classifier.weight' == key:
-            weight = weight.transpose()
-        model_2_params[key] = weight
-    return model_2_params, model_1_params
-
-
-def gen_res(model_paddle, data_paddle, model_torch, data_torch):
-    return model_paddle(data_paddle), model_torch(data_torch)
-
-
-def update_model(model_paddle, model_torch):
-    params_paddle, params_torch = gen_params(model_torch)
-    model_paddle.set_state_dict(params_paddle)
-    model_torch.load_state_dict(params_torch)
-    return model_paddle, model_torch
-
-
-def gen_npy(seed_list, model_name='resnext'):
-    reprod_log_paddle = ReprodLogger()
-    reprod_log_torch = ReprodLogger()
-    model_paddle, model_torch = gen_model(model_name)
-    model_paddle.eval()
-    model_torch.eval()
-    for seed in seed_list:
-        data_paddle, data_torch = gen_fake_data(seed)
-        params_paddle, params_torch = gen_params(model_torch)
-        model_paddle.set_state_dict(params_paddle)
-        model_torch.load_state_dict(params_torch)
-        res_paddle, res_torch = model_paddle(data_paddle), model_torch(data_torch)
-        reprod_log_paddle.add(f"data_{seed_list.index(seed) + 1}", res_paddle.numpy())
-        reprod_log_torch.add(f"data_{seed_list.index(seed) + 1}", res_torch.data.cpu().numpy())
-    reprod_log_paddle.save(f"./{model_name}_paddle.npy")
-    reprod_log_torch.save(f"./{model_name}_torch.npy")
-
-
-def torch2paddle(params_torch):
-    model_1_params = params_torch
-    model_2_params = {}
-    for key in model_1_params:
-        weight = model_1_params[key].cpu().detach().numpy()
-        if 'running_mean' in key:
-            key = key.replace('running_mean', '_mean')
-        if 'running_var' in key:
-            key = key.replace('running_var', '_variance')
-        if 'classifier.weight' == key:
-            weight = weight.transpose()
-        if 'fc.weight' == key:
-            weight = weight.transpose()
-        model_2_params[key] = weight
-    return model_2_params
-
-
-def torch2paddle_ema(params_torch):
-    model_1_params = params_torch
-    model_2_params = {}
-    for key in model_1_params:
-        weight = model_1_params[key].cpu().detach().numpy()
-        if 'running_mean' in key:
-            key = key.replace('running_mean', '_mean')
-        if 'running_var' in key:
-            key = key.replace('running_var', '_variance')
-        if 'classifier.weight' == key:
-            weight = weight.transpose()
-        if 'fc.weight' == key:
-            weight = weight.transpose()
-        model_2_params[key] = weight
-    return model_2_params
-
-
-def gen_check(name):
-    diff_helper = ReprodDiffHelper()
-    info_torch = diff_helper.load_info(f"./{name}_torch.npy")
-    info_paddle = diff_helper.load_info(f"./{name}_paddle.npy")
-
-    diff_helper.compare_info(info_paddle, info_torch)
-
-    diff_helper.report(
-        diff_method="mean", diff_threshold=1e-6, path=f"./diff_{name}_model.txt")
-
-logger = logging.getLogger(__name__)
 best_acc = 0
 
 
@@ -183,15 +61,15 @@ def get_cosine_schedule_with_warmup(learning_rate, num_warmup_steps,
 
 def interleave(x, size):
     s = list(x.shape)
-    return x.reshape([-1, size] + s[1:]).transpose([1,0,2,3,4]).reshape([-1] + s[1:])
+    return x.reshape([-1, size] + s[1:]).transpose([1, 0, 2, 3, 4]).reshape([-1] + s[1:])
 
 
 def de_interleave(x, size):
     s = list(x.shape)
-    return x.reshape([size, -1] + s[1:]).transpose([1,0,2]).reshape([-1] + s[1:])
+    return x.reshape([size, -1] + s[1:]).transpose([1, 0, 2]).reshape([-1] + s[1:])
 
 
-def get_args():
+def main():
     parser = argparse.ArgumentParser(description='Paddle FixMatch Training')
     parser.add_argument('--gpu-id', default='0', type=int,
                         help='id(s) for CUDA_VISIBLE_DEVICES')
@@ -239,7 +117,7 @@ def get_args():
                         help='directory to output the result')
     parser.add_argument('--resume', default='', type=str,
                         help='path to latest checkpoint (default: none)')
-    parser.add_argument('--data-file', default='../../data/cifar-10-python.tar.gz', type=str,
+    parser.add_argument('--data-file', default='./data/cifar-10-python.tar.gz', type=str,
                         help='path to cifar10 dataset')
     parser.add_argument('--seed', default=None, type=int,
                         help="random seed")
@@ -254,6 +132,7 @@ def get_args():
                         help="don't use progress bar")
 
     args = parser.parse_args()
+
     global best_acc
 
     paddle.set_device('gpu') if paddle.is_compiled_with_cuda() else paddle.set_device('cpu')
@@ -278,11 +157,30 @@ def get_args():
 
     args.device = paddle.get_device()
     args.world_size = 1
+    # args.writer = LogWriter(logdir=args.out)
+    os.makedirs(args.out, exist_ok=True)
 
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s -   %(message)s",
         datefmt="%m/%d/%Y %H:%M:%S",
-        level=logging.INFO if args.local_rank in [-1, 0] else logging.WARN)
+        level=logging.INFO if args.local_rank in [-1, 0] else logging.WARN,
+        filename=f'{args.out}/train@{args.num_labeled}.log',
+        filemode='a'
+    )
+
+    # BASIC_FORMAT = "%(asctime)s - %(levelname)s - %(name)s -   %(message)s",
+    # DATE_FORMAT = "%m/%d/%Y %H:%M:%S"
+
+    # formatter = logging.Formatter(BASIC_FORMAT, DATE_FORMAT)
+    chlr = logging.StreamHandler()  # 输出到控制台的handler
+    logger.addHandler(chlr)
+    # chlr.setFormatter(formatter)
+    # chlr.setLevel('INFO')  # 也可以不设置，不设置就默认用logger的level
+    # fhlr = logging.FileHandler('example.log') # 输出到文件的handler
+    # fhlr.setFormatter(formatter)
+    # logger.addHandler(fhlr)
+    # logger.info('==============================logger success !')
+    # raise NotImplemented
 
     logger.warning(
         f"Process rank: {args.local_rank}, "
@@ -290,15 +188,10 @@ def get_args():
         f"n_gpu: {args.n_gpu}, "
         f"distributed training: {bool(args.local_rank != -1)}, "
         f"16-bits training: {args.amp}", )
-
     logger.info(dict(args._get_kwargs()))
 
     if args.seed is not None:
         set_seed(args)
-    #
-    # if args.local_rank in [-1, 0]:
-    #     os.makedirs(args.out, exist_ok=True)
-    #     args.writer = SummaryWriter(args.out)
 
     if args.dataset == 'cifar10':
         args.num_classes = 10
@@ -319,6 +212,64 @@ def get_args():
             args.model_cardinality = 8
             args.model_depth = 29
             args.model_width = 64
+
+    labeled_dataset, unlabeled_dataset, test_dataset = DATASET_GETTERS[args.dataset](
+        args, args.data_file)
+
+    if paddle.distributed.get_world_size() > 1:
+        paddle.distributed.init_parallel_env()
+
+        labeled_batch_sampler = DistributedBatchSampler(labeled_dataset,
+                                                        batch_size=args.batch_size,
+                                                        drop_last=True, shuffle=True)
+        labeled_trainloader = DataLoader(
+            labeled_dataset,
+            batch_sampler=labeled_batch_sampler,
+            num_workers=args.num_workers)
+
+        labeled_batch_sampler = DistributedBatchSampler(unlabeled_dataset,
+                                                        batch_size=args.batch_size * args.mu,
+                                                        drop_last=True, shuffle=True)
+        unlabeled_trainloader = DataLoader(
+            unlabeled_dataset,
+            batch_sampler=labeled_batch_sampler,
+            num_workers=args.num_workers)
+
+        test_sampler = RandomSampler(test_dataset)
+        labeled_batch_sampler = BatchSampler(sampler=test_sampler,
+                                             batch_size=args.batch_size * args.mu,
+                                             drop_last=False)
+        test_loader = DataLoader(
+            test_dataset,
+            batch_sampler=labeled_batch_sampler,
+            num_workers=args.num_workers)
+    else:
+        labeled_sampler = RandomSampler(labeled_dataset)
+        labeled_batch_sampler = BatchSampler(sampler=labeled_sampler,
+                                             batch_size=args.batch_size,
+                                             drop_last=True)
+        labeled_trainloader = DataLoader(
+            labeled_dataset,
+            batch_sampler=labeled_batch_sampler,
+            num_workers=args.num_workers)
+
+        unlabeled_sampler = RandomSampler(unlabeled_dataset)
+        labeled_batch_sampler = BatchSampler(sampler=unlabeled_sampler,
+                                             batch_size=args.batch_size * args.mu,
+                                             drop_last=True)
+        unlabeled_trainloader = DataLoader(
+            unlabeled_dataset,
+            batch_sampler=labeled_batch_sampler,
+            num_workers=args.num_workers)
+
+        test_sampler = RandomSampler(test_dataset)
+        labeled_batch_sampler = BatchSampler(sampler=test_sampler,
+                                             batch_size=args.batch_size * args.mu,
+                                             drop_last=False)
+        test_loader = DataLoader(
+            test_dataset,
+            batch_sampler=labeled_batch_sampler,
+            num_workers=args.num_workers)
 
     model = create_model(args)
 
@@ -344,19 +295,23 @@ def get_args():
         ema_model = ModelEMA(args, model)
 
     args.start_epoch = 0
+
     if args.resume:
         logger.info("==> Resuming from checkpoint..")
         assert os.path.isfile(
             args.resume), "Error: no checkpoint directory found!"
-        args.out = os.path.dirname(args.resume)
+
         checkpoint = paddle.load(args.resume)
         best_acc = checkpoint['best_acc']
         args.start_epoch = checkpoint['epoch']
-        model.load_state_dict(checkpoint['state_dict'])
+        model.set_state_dict(checkpoint['state_dict'])
         if args.use_ema:
-            ema_model.ema.load_state_dict(checkpoint['ema_state_dict'])
-        optimizer_1.load_state_dict(checkpoint['optimizer_1'])
-        optimizer_2.load_state_dict(checkpoint['optimizer_2'])
+            ema_model.ema.set_state_dict(checkpoint['ema_state_dict'])
+        optimizer_1.set_state_dict(checkpoint['optimizer_1'])
+        optimizer_2.set_state_dict(checkpoint['optimizer_2'])
+        if 'FixMatch-Paddle/params' in args.resume:
+            args.resume = args.out
+            args.out = os.path.dirname(args.resume)
 
     if args.amp:
         from apex import amp
@@ -375,62 +330,50 @@ def get_args():
 
     optimizer_1.clear_grad()
     optimizer_2.clear_grad()
+    if paddle.distributed.get_world_size() > 1:
+        model = paddle.DataParallel(model)
+    logger.info('===============stage one================')
+    test(args, test_loader, model)
 
-    return args
+def test(args, test_loader, model):
+    batch_time = AverageMeter()
+    data_time = AverageMeter()
+    losses = AverageMeter()
+    top1 = AverageMeter()
+    top5 = AverageMeter()
+    end = time.time()
+    model.eval()
 
+    with paddle.no_grad():
+        for batch_idx, (inputs, targets) in enumerate(test_loader):
+            data_time.update(time.time() - end)
 
-def model_2_ema(args, model):
-    if args.use_ema:
-        from models.ema import ModelEMA
-        model_ema = ModelEMA(args, model)
-        return model_ema
-    else:
-        raise EOFError('meile ')
+            outputs = model(inputs)
+            loss = F.cross_entropy(outputs, targets)
 
-def gen_dataloader_paddle(args):
-    labeled_dataset, unlabeled_dataset, test_dataset = DATASET_GETTERS[args.dataset](
-        args, args.data_file)
-
-    labeled_sampler = RandomSampler(labeled_dataset)
-    labeled_batch_sampler = BatchSampler(sampler=labeled_sampler,
-                                         batch_size=args.batch_size,
-                                         drop_last=True)
-    labeled_trainloader = DataLoader(
-        labeled_dataset,
-        batch_sampler=labeled_batch_sampler,
-        num_workers=args.num_workers)
-
-    unlabeled_sampler = RandomSampler(unlabeled_dataset)
-    labeled_batch_sampler = BatchSampler(sampler=unlabeled_sampler,
-                                         batch_size=args.batch_size * args.mu,
-                                         drop_last=True)
-    unlabeled_trainloader = DataLoader(
-        unlabeled_dataset,
-        batch_sampler=labeled_batch_sampler,
-        num_workers=args.num_workers)
-
-    test_sampler = RandomSampler(test_dataset)
-    labeled_batch_sampler = BatchSampler(sampler=test_sampler,
-                                         batch_size=args.batch_size * args.mu,
-                                         drop_last=True)
-    test_loader = DataLoader(
-        test_dataset,
-        batch_sampler=labeled_batch_sampler,
-        num_workers=args.num_workers)
-    return labeled_trainloader,unlabeled_trainloader,test_loader
-
-def modified_lr_params(params_paddle_path):
-    state=paddle.load(params_paddle_path)
-    state['optimizer_1']['LR_Scheduler']['last_lr']=state['optimizer_1']['LR_Scheduler']['last_lr']*4
-    state['optimizer_2']['LR_Scheduler']['last_lr'] = state['optimizer_2']['LR_Scheduler']['last_lr'] * 4
-
-    params_paddle_path_new=params_paddle_path.replace('best','best_')
-    paddle.save(state,params_paddle_path_new)
-
+            prec1, prec5 = accuracy(outputs, targets, topk=(1, 5))
+            losses.update(loss.item(), inputs.shape[0])
+            top1.update(prec1.item(), inputs.shape[0])
+            top5.update(prec5.item(), inputs.shape[0])
+            batch_time.update(time.time() - end)
+            end = time.time()
+            if not args.no_progress:
+                if dist.get_rank() == 0:
+                    logger.info(
+                        "Test Iter: {batch:4}/{iter:4}. Data: {data:.3f}s. Batch: {bt:.3f}s. Loss: {loss:.4f}. top1: {top1:.2f}. top5: {top5:.2f}. ".format(
+                            batch=batch_idx + 1,
+                            iter=len(test_loader),
+                            data=data_time.avg,
+                            bt=batch_time.avg,
+                            loss=losses.avg,
+                            top1=top1.avg,
+                            top5=top5.avg,
+                        ))
+    logger.info("top-1 acc: {:.2f}".format(top1.avg))
+    logger.info("top-5 acc: {:.2f}".format(top5.avg))
+    model.train()
+    return losses.avg, top1.avg
 
 
 if __name__ == '__main__':
-
-
-    modified_lr_params('/Users/yangruizhi/Desktop/PR_list/FixMatch-Paddle/pipeline/model_params/model_best.pdparams')
-    print('success!!!')
+    main()

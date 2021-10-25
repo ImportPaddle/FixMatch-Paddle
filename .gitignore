@@ -106,7 +106,8 @@ venv.bak/
 # mypy
 .mypy_cache/
 
-# we
+# we##############
+
 .idea/
 
 result/
@@ -114,3 +115,5 @@ result/
 .DS_Store
 
 *.npy
+
+*.pdparams
