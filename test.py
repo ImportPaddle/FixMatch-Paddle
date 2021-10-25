@@ -189,7 +189,7 @@ def main():
     model = create_model(args)
     if args.use_ema:
         from models.ema import ModelEMA
-        ema_model = ModelEMA(args, model, args.ema_decay)
+        ema_model = ModelEMA(args, model)
 
     if args.model_best:
         logger.info("==> Resuming from checkpoint..")
