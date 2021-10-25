@@ -22,7 +22,7 @@
 |:---:|:---:|:---:|:---:|
 | Paper (RA) | 86.19 ± 3.37 | 94.93 ± 0.65 | 95.74 ± 0.05 |
 | pytorch code | 93.60 | 95.31 | 95.77 |
-| **paddle code** | 93.13 (epoch 100) | 93.47 (epoch 109) | 94.338 (epoch 129) |
+| **paddle code** | 93.59 (epoch 190) | 95.20 (epoch 255) | 95.30 (epoch 156) |
 | **model_best** | [model_best@40.pdparams](https://github.com/ImportPaddle/FixMatch-Paddle/releases/tag/trainv0.8) | [model_best@250.pdparams](https://github.com/ImportPaddle/FixMatch-Paddle/releases/tag/trainv0.8) | [model_best@4000.pdparams](https://github.com/ImportPaddle/FixMatch-Paddle/releases/tag/trainv0.8) |
 
 \* paddle 精度截至 10.24 19:30。还在继续训练（单卡），精度还在**缓慢**提升
