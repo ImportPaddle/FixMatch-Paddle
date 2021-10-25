@@ -317,7 +317,7 @@ def main():
         logger.info("==> Resuming from checkpoint..") if local_master else None
         assert os.path.isfile(
             args.resume), "Error: no checkpoint directory found!"
-        args.out = os.path.dirname(args.resume)
+        # args.out = os.path.dirname(args.resume)
         checkpoint = paddle.load(args.resume)
         best_acc = checkpoint['best_acc']
         args.start_epoch = checkpoint['epoch']

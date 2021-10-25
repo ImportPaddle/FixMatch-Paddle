@@ -80,7 +80,7 @@ python test.py --dataset cifar10 \
     --arch wideresnet --batch-size 64 \
     --expand-labels --seed 5 \
     --data-file path/to/cifar10 \
-    --model-best path/to/latest-ckpt
+    --model-best path/to/best-ckpt
 ```
 
 输出如下：
