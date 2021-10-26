@@ -26,8 +26,6 @@
 | **paddle code** | 93.59 (epoch 190) | 95.20 (epoch 255) | 95.83 (epoch 156) |
 | **model_best** | [model_best@40.pdparams](https://github.com/ImportPaddle/FixMatch-Paddle/releases/tag/trainv0.8) | [model_best@250.pdparams](https://github.com/ImportPaddle/FixMatch-Paddle/releases/tag/trainv0.8) | [model_best@4000.pdparams](https://github.com/ImportPaddle/FixMatch-Paddle/releases/tag/trainv0.8) |
 
-\* paddle 精度截至 10.25 17:26。还在继续训练（单机4卡），250 labeled 和 4000 labeled 模型的精度还在提升
-
 ## 快速开始
 
 cifar10 数据集: [cifar-10-python.tar.gz](https://github.com/ImportPaddle/FixMatch-Paddle/releases/tag/trainv0.8)
