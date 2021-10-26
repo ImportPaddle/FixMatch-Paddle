@@ -126,12 +126,12 @@ top-5 acc: 99.85
 | 信息 | 说明 |
 | --- | --- |
 | 发布者 | [刘辰](https://github.com/ttjygbtj)、[吴海涛](https://github.com/Dylan-get)、[石华榜](https://github.com/S-HuaBomb)、[杨瑞智](https://github.com/buriedms)、[许观](https://github.com/HeySUPERMELON) |
-| 时间 | 2021.10。25 |
+| 时间 | 2021.10.25 |
 | 框架版本 | paddlepaddle==2.1.2 |
 | 应用场景 | 半监督图像分类 |
 | 支持硬件 | GPU × 4 |
 | 预训练模型下载 | 链接：https://pan.baidu.com/s/14j8AQnvLgBFgCfZzHbfpxQ 提取码：kimn |
-| AI Studio 地址 | [https://aistudio.baidu.com/aistudio/projectdetail/2509943?contributionType=1](https://aistudio.baidu.com/aistudio/projectdetail/2509943?contributionType=1) |
+| AI Studio 地址 | [FixMatch-Paddle](https://aistudio.baidu.com/aistudio/projectdetail/2509943?contributionType=1) |
 
 
 ## Citations
